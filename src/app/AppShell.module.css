@@ -1,0 +1,142 @@
+.app {
+  position: relative;
+  display: grid;
+  grid-template-rows: var(--topbar-height) 2px auto auto minmax(0, 1fr);
+  height: 100%;
+  background: var(--canvas);
+}
+
+/* ---------- progress ---------- */
+
+.progress {
+  position: relative;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.determinate {
+  position: absolute;
+  inset: 0 auto 0 0;
+  background: var(--ink);
+  transition: width var(--duration-base) var(--ease-out);
+}
+
+.indeterminate {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 30%;
+  background: var(--ink);
+  animation: indeterminate 1.2s var(--ease-in-out) infinite;
+}
+
+@keyframes indeterminate {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(340%);
+  }
+}
+
+.status {
+  position: absolute;
+  top: calc(var(--topbar-height) + var(--space-3));
+  left: 50%;
+  z-index: 30;
+  transform: translateX(-50%);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-2);
+  font: 400 12px/18px var(--font-sans);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  animation: fade-up var(--duration-base) var(--ease-out);
+}
+
+/* ---------- error banner ---------- */
+
+.banner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-2) var(--space-2) var(--space-2) var(--space-4);
+  background: var(--deleted-wash);
+  border-bottom: 1px solid var(--deleted);
+  color: var(--deleted);
+}
+
+.banner p {
+  flex: 1;
+  color: var(--text);
+}
+
+/* ---------- workspace ---------- */
+
+.workspace {
+  grid-row: 5;
+  position: relative;
+  display: grid;
+  grid-template-areas: "rail canvas inspector";
+  grid-template-columns: var(--rail-width) minmax(0, 1fr) var(--inspector-width);
+  min-height: 0;
+}
+
+.workspace[data-rail="closed"] {
+  grid-template-columns: 0 minmax(0, 1fr) var(--inspector-width);
+}
+
+.workspace[data-inspector="closed"] {
+  grid-template-columns: var(--rail-width) minmax(0, 1fr) 0;
+}
+
+.workspace[data-rail="closed"][data-inspector="closed"] {
+  grid-template-columns: 0 minmax(0, 1fr) 0;
+}
+
+/* Below 1100px the inspector floats over the canvas instead of taking a column. */
+@media (max-width: 1100px) {
+  .workspace,
+  .workspace[data-inspector="closed"],
+  .workspace[data-inspector="open"] {
+    grid-template-columns: var(--rail-width) minmax(0, 1fr) 0;
+  }
+
+  .workspace[data-rail="closed"] {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+  }
+}
+
+/* Below 760px the rail floats too, so the canvas keeps the full width. */
+@media (max-width: 760px) {
+  .workspace,
+  .workspace[data-rail="open"],
+  .workspace[data-rail="closed"] {
+    grid-template-columns: 0 minmax(0, 1fr) 0;
+  }
+}
+
+/* ---------- drop overlay ---------- */
+
+.drop {
+  position: fixed;
+  inset: var(--space-3);
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  border: 2px dashed var(--ink);
+  border-radius: var(--radius-lg);
+  background: var(--scrim);
+  pointer-events: none;
+  animation: fade-up var(--duration-base) var(--ease-out);
+}
+
+.drop p {
+  padding: var(--space-3) var(--space-5);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--ink);
+  font: 650 28px/34px var(--font-display);
+  box-shadow: var(--shadow-3);
+}

@@ -52,12 +52,34 @@ ingest (GitHub / folder / zip / paste)
 | --- | --- |
 | `src/parse/` | Language detection, TS and Python parsers, module-level sections |
 | `src/diff/` | Unified diff parsing (git and plain) |
-| `src/graph/` | Graph building, import/call resolution, change index, map view, storyline order |
+| `src/graph/` | Graph building, import/call resolution, change index, map view, storyline order, review order |
 | `src/analysis/` | Pipeline that turns a `Project` into an `Analysis` |
-| `src/ingest/` | GitHub, folder/zip and paste loaders |
-| `src/review/` | Comment storage and import/export |
-| `src/ai/` | Optional Claude calls |
-| `src/components/` | React UI: map canvas, storyline canvas, panels, dialogs |
+| `src/ingest/` | GitHub, folder/zip/drop and paste loaders |
+| `src/review/` | Notes and viewed-state storage, Markdown/JSON export and import |
+| `src/state/` | Workspace store (reducer + context) and keyboard shortcuts |
+| `src/ui/` | Design-system primitives: Button, badges, fields, segmented control, dialog, toasts, logo |
+| `src/app/` | App shell: top bar, left rail (Outline / Review), canvas area, inspector, welcome, dialogs, search |
+| `src/canvas/` | Map canvas and storyline canvas (block cards, flow arrows, layout) |
+| `src/styles/` | `tokens.css` (generated from the design system) and global base styles |
+| `src/demo/` | The built-in demo project |
+
+## Design system
+
+The UI follows the **VisualCode Design System** ("margin ink"): one ink colour for the reading path, change colours only for changes, code as the hero. Tokens live in `src/styles/tokens.css`; components use CSS modules that read only those tokens. Light and dark themes are both first-class, and every text pair meets WCAG AA in both.
+
+## Keyboard
+
+| Key | Action |
+| --- | --- |
+| Ctrl/⌘ K | Search blocks, files and commands |
+| J / K | Next / previous step in the storyline |
+| N / Shift N | Next / previous changed block |
+| V | Mark the selected block viewed |
+| C | Write a note on the selected block |
+| M | Switch Map / Story |
+| F | Fit the canvas |
+| Esc | Clear the selection, otherwise go up one level |
+| ? | All shortcuts |
 
 ## Known limitations (POC)
 
@@ -70,3 +92,4 @@ ingest (GitHub / folder / zip / paste)
 - GitHub loading supports public repositories only; refs containing `/` are not supported in
   `…/tree/<ref>/…` URLs. Very large repos need a sub-folder URL.
 - Phones get a read-only view (no commenting); the app is designed for desktop.
+- The review checklist (viewed state and progress) can be turned off in Settings.

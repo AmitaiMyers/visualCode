@@ -1,30 +1,57 @@
-// User settings. Keys live in memory unless the user opts in to remembering them.
+// User settings. Preferences are always remembered; keys stay in memory unless the user opts in.
+
+export type ThemePreference = "system" | "light" | "dark";
 
 export interface Settings {
   claudeApiKey: string;
   githubToken: string;
-  remember: boolean;
+  rememberKeys: boolean;
+  theme: ThemePreference;
+  /** Review checklist, viewed state and progress. Off hides them everywhere. */
+  reviewChecklist: boolean;
 }
 
-const STORAGE_KEY = "visualcode:settings";
+const KEYS_STORAGE = "visualcode:settings";
+const PREFS_STORAGE = "visualcode:prefs";
 
-const EMPTY_SETTINGS: Settings = { claudeApiKey: "", githubToken: "", remember: false };
+const DEFAULTS: Settings = { claudeApiKey: "", githubToken: "", rememberKeys: false, theme: "system", reviewChecklist: true };
+
+function readJson(key: string): Record<string, unknown> | null {
+  const stored = localStorage.getItem(key);
+  return stored === null ? null : (JSON.parse(stored) as Record<string, unknown>);
+}
+
+function stringOr(value: unknown, fallback: string): string {
+  return typeof value === "string" ? value : fallback;
+}
 
 export function loadSettings(): Settings {
-  const stored = localStorage.getItem(STORAGE_KEY);
-  if (stored === null) return EMPTY_SETTINGS;
-  const parsed = JSON.parse(stored) as Partial<Settings>;
+  const keys = readJson(KEYS_STORAGE);
+  const prefs = readJson(PREFS_STORAGE);
+  const theme = prefs !== null && (prefs["theme"] === "light" || prefs["theme"] === "dark") ? prefs["theme"] : DEFAULTS.theme;
   return {
-    claudeApiKey: typeof parsed.claudeApiKey === "string" ? parsed.claudeApiKey : "",
-    githubToken: typeof parsed.githubToken === "string" ? parsed.githubToken : "",
-    remember: true,
+    claudeApiKey: keys === null ? "" : stringOr(keys["claudeApiKey"], ""),
+    githubToken: keys === null ? "" : stringOr(keys["githubToken"], ""),
+    rememberKeys: keys !== null,
+    theme,
+    reviewChecklist: prefs === null || prefs["reviewChecklist"] !== false,
   };
 }
 
 export function persistSettings(settings: Settings): void {
-  if (settings.remember) {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  localStorage.setItem(PREFS_STORAGE, JSON.stringify({ theme: settings.theme, reviewChecklist: settings.reviewChecklist }));
+  if (settings.rememberKeys) {
+    localStorage.setItem(KEYS_STORAGE, JSON.stringify({ claudeApiKey: settings.claudeApiKey, githubToken: settings.githubToken }));
   } else {
-    localStorage.removeItem(STORAGE_KEY);
+    localStorage.removeItem(KEYS_STORAGE);
+  }
+}
+
+/** Applies the theme preference to the document (system = no attribute, CSS follows the OS). */
+export function applyTheme(theme: ThemePreference): void {
+  if (theme === "system") {
+    delete document.documentElement.dataset["theme"];
+  } else {
+    document.documentElement.dataset["theme"] = theme;
   }
 }

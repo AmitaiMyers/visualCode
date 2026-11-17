@@ -2,7 +2,7 @@ import dagre from "@dagrejs/dagre";
 import type { GraphView } from "./view";
 
 export const NODE_WIDTH = 220;
-export const NODE_HEIGHT = 68;
+export const NODE_HEIGHT = 64;
 
 export interface Position {
   x: number;

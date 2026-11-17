@@ -19,6 +19,16 @@ export async function saveComments(projectId: string, comments: ReviewComment[])
   await set(storageKey(projectId), comments);
 }
 
+/** Ids of blocks the reviewer marked as viewed, kept per project next to the comments. */
+export async function loadViewed(projectId: string): Promise<string[]> {
+  const stored = await get<string[]>(`viewed:${projectId}`);
+  return stored === undefined ? [] : stored;
+}
+
+export async function saveViewed(projectId: string, viewed: Iterable<string>): Promise<void> {
+  await set(`viewed:${projectId}`, [...viewed]);
+}
+
 export function newComment(nodeId: string, body: string, source: ReviewComment["source"]): ReviewComment {
   return { id: crypto.randomUUID(), nodeId, body, source, resolved: false, createdAt: new Date().toISOString() };
 }
@@ -67,8 +77,13 @@ export function mergeComments(local: ReviewComment[], imported: ReviewComment[])
   return [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
 }
 
+export interface ReviewSummary {
+  changedBlocks: number;
+  viewedBlocks: number;
+}
+
 /** Human-readable review grouped by the code location each comment is pinned to. */
-export function exportMarkdown(title: string, graph: CodeGraph, comments: ReviewComment[]): string {
+export function exportMarkdown(title: string, graph: CodeGraph, comments: ReviewComment[], summary: ReviewSummary | null): string {
   const groups = new Map<string, ReviewComment[]>();
   for (const comment of comments) {
     const group = groups.get(comment.nodeId);
@@ -84,7 +99,11 @@ export function exportMarkdown(title: string, graph: CodeGraph, comments: Review
     });
     return `## ${heading}\n\n${items.join("\n")}`;
   });
-  return `# Review: ${title}\n\n${sections.join("\n\n")}\n`;
+  const openCount = comments.filter((comment) => !comment.resolved).length;
+  const counts = [`${comments.length} notes (${openCount} open)`];
+  if (summary !== null) counts.unshift(`${summary.viewedBlocks} of ${summary.changedBlocks} changed blocks viewed`);
+  const body = sections.length === 0 ? "_No notes._" : sections.join("\n\n");
+  return `# Review: ${title}\n\n${counts.join(" · ")}\n\n${body}\n`;
 }
 
 function locationLabel(graph: CodeGraph, nodeId: string): string {

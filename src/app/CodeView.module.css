@@ -1,0 +1,60 @@
+.code {
+  margin: 0;
+  padding: var(--space-2) 0;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--code-paper);
+  font: 400 12px/19px var(--font-mono);
+  font-variant-ligatures: none;
+  overflow-x: auto;
+}
+
+.line {
+  display: flex;
+  min-width: max-content;
+  border-left: 3px solid transparent;
+  position: relative;
+}
+
+.number {
+  flex: 0 0 40px;
+  padding-right: 10px;
+  text-align: right;
+  color: var(--text-faint);
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+
+.text {
+  white-space: pre;
+  padding-right: var(--space-3);
+}
+
+.added {
+  background: var(--added-wash);
+  border-left-color: var(--added);
+}
+
+.removal::after {
+  content: "";
+  position: absolute;
+  left: 40px;
+  right: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--deleted);
+}
+
+.diffLine {
+  white-space: pre;
+  min-width: max-content;
+  padding: 0 var(--space-3);
+}
+
+.deleted {
+  background: var(--deleted-wash);
+}
+
+.hunk {
+  color: var(--text-muted);
+}

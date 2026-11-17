@@ -50,12 +50,11 @@ function forEachAncestor(graph: CodeGraph, nodeId: string, visit: (ancestorId: s
 function changedSymbols(graph: CodeGraph, fileNodeId: string, diff: FileDiff): Map<string, ChangeStatus> {
   const result = new Map<string, ChangeStatus>();
   const added = new Set(diff.addedLines);
-  const touched = [...diff.addedLines, ...diff.removalAnchors];
+  const touched = new Set([...diff.addedLines, ...diff.removalAnchors]);
   const visit = (nodeId: string): void => {
     const node = mustGet(graph.nodes, nodeId, "Symbol node");
-    const symbol = node.symbol;
-    if (symbol !== null) {
-      const status = symbolStatus(diff.status, symbol.startLine, symbol.endLine, added, touched);
+    if (node.symbol !== null) {
+      const status = symbolStatus(diff.status, ownLines(graph, nodeId), added, touched);
       if (status !== null) result.set(nodeId, status);
     }
     node.childIds.forEach(visit);
@@ -64,18 +63,25 @@ function changedSymbols(graph: CodeGraph, fileNodeId: string, diff: FileDiff): M
   return result;
 }
 
-function symbolStatus(
-  fileStatus: ChangeStatus,
-  startLine: number,
-  endLine: number,
-  addedLines: Set<number>,
-  touchedLines: number[],
-): ChangeStatus | null {
-  if (fileStatus === "added") return "added";
-  const isTouched = touchedLines.some((line) => line >= startLine && line <= endLine);
-  if (!isTouched) return null;
-  for (let line = startLine; line <= endLine; line += 1) {
-    if (!addedLines.has(line)) return "modified";
+/** Lines that belong to a symbol itself: its range minus the ranges of nested symbols (a class's methods). */
+function ownLines(graph: CodeGraph, nodeId: string): number[] {
+  const node = mustGet(graph.nodes, nodeId, "Symbol node");
+  const symbol = node.symbol;
+  if (symbol === null) throw new Error(`Not a symbol: ${nodeId}`);
+  const childRanges = node.childIds.map((childId) => {
+    const child = mustGet(graph.nodes, childId, "Nested symbol").symbol;
+    if (child === null) throw new Error(`Nested node is not a symbol: ${childId}`);
+    return child;
+  });
+  const lines: number[] = [];
+  for (let line = symbol.startLine; line <= symbol.endLine; line += 1) {
+    if (!childRanges.some((child) => line >= child.startLine && line <= child.endLine)) lines.push(line);
   }
-  return "added"; // every line of the symbol is new
+  return lines;
+}
+
+function symbolStatus(fileStatus: ChangeStatus, lines: number[], addedLines: Set<number>, touchedLines: Set<number>): ChangeStatus | null {
+  if (fileStatus === "added") return "added";
+  if (!lines.some((line) => touchedLines.has(line))) return null;
+  return lines.every((line) => addedLines.has(line)) ? "added" : "modified"; // every own line new = added
 }

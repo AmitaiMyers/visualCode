@@ -1,0 +1,129 @@
+.bar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+  padding: 0 var(--space-3) 0 var(--space-2);
+  padding-left: max(var(--space-2), env(safe-area-inset-left, 0px));
+  padding-right: max(var(--space-3), env(safe-area-inset-right, 0px));
+  background: var(--surface);
+  border-bottom: 1px solid var(--line);
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: var(--line);
+  flex: none;
+}
+
+.project {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+
+.spacer {
+  flex: 1;
+}
+
+.search {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 240px;
+  height: 32px;
+  padding: 0 var(--space-1) 0 var(--space-3);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--surface-sunken);
+  color: var(--text-muted);
+  transition: border-color var(--duration-quick) var(--ease-standard);
+}
+
+.search:hover {
+  border-color: var(--line-strong);
+}
+
+.searchText {
+  flex: 1;
+  text-align: left;
+}
+
+.searchKeys {
+  display: inline-flex;
+  gap: 2px;
+}
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 140px;
+  flex: none;
+}
+
+.progressText {
+  font: 400 12px/14px var(--font-sans);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.progressText strong {
+  color: var(--text);
+}
+
+.progressTrack {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--surface-sunken);
+  overflow: hidden;
+}
+
+.progressFill {
+  display: block;
+  height: 100%;
+  border-radius: var(--radius-pill);
+  background: var(--ink);
+  transition: width var(--duration-base) var(--ease-out);
+}
+
+.done {
+  background: var(--added);
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+}
+
+@media (max-width: 1100px) {
+  .search {
+    width: 32px;
+    padding: 0;
+    justify-content: center;
+  }
+
+  .searchText,
+  .searchKeys,
+  .hideNarrow {
+    display: none;
+  }
+}
+
+@media (max-width: 760px) {
+  .project,
+  .divider,
+  .progress,
+  .hidePhone {
+    display: none;
+  }
+
+  .bar {
+    gap: var(--space-2);
+  }
+}

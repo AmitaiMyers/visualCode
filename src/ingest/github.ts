@@ -17,7 +17,8 @@ export type GitHubTarget =
  * Refs that contain "/" are not supported in tree URLs (the first segment is taken as the ref).
  */
 export function parseGitHubUrl(input: string): GitHubTarget {
-  const url = new URL(input.trim());
+  const trimmed = input.trim();
+  const url = new URL(/^https?:\/\//.test(trimmed) ? trimmed : `https://${trimmed}`);
   if (url.hostname !== "github.com") {
     throw new Error(`Not a github.com URL: ${input}`);
   }
@@ -40,7 +41,14 @@ export function parseGitHubUrl(input: string): GitHubTarget {
   return { kind: "repo", owner, repo, ref: null, subPath: "" };
 }
 
-export async function loadFromGitHub(input: string, token: string, onProgress: (message: string) => void): Promise<Project> {
+export interface LoadProgress {
+  message: string;
+  fraction: number | null; // 0..1 when the amount of work is known
+}
+
+export type ProgressListener = (progress: LoadProgress) => void;
+
+export async function loadFromGitHub(input: string, token: string, onProgress: ProgressListener): Promise<Project> {
   const target = parseGitHubUrl(input);
   const client = new GitHubClient(token);
   if (target.kind === "pull") {
@@ -72,10 +80,10 @@ interface PullRequestFile {
 async function loadPullRequest(
   client: GitHubClient,
   target: Extract<GitHubTarget, { kind: "pull" }>,
-  onProgress: (message: string) => void,
+  onProgress: ProgressListener,
 ): Promise<Project> {
   const base = `/repos/${target.owner}/${target.repo}`;
-  onProgress(`Reading pull request #${target.number}…`);
+  onProgress({ message: `Reading pull request #${target.number}…`, fraction: null });
   const pull = await client.json<PullRequestInfo>(`${base}/pulls/${target.number}`);
   if (pull.head.repo === null) {
     throw new Error("The pull request's source repository was deleted, so its code cannot be loaded.");
@@ -123,9 +131,9 @@ async function loadTree(
   repo: string,
   ref: string,
   subPath: string,
-  onProgress: (message: string) => void,
+  onProgress: ProgressListener,
 ): Promise<SourceFile[]> {
-  onProgress(`Listing files of ${owner}/${repo}@${ref}…`);
+  onProgress({ message: `Listing files of ${owner}/${repo}…`, fraction: null });
   const tree = await client.json<TreeResponse>(`/repos/${owner}/${repo}/git/trees/${encodeURIComponent(ref)}?recursive=1`);
   if (tree.truncated) {
     throw new Error("This repository is too large for one listing. Load a sub-folder URL (…/tree/<branch>/<folder>) instead.");
@@ -149,7 +157,7 @@ async function loadTree(
   return mapWithConcurrency(entries, FETCH_CONCURRENCY, async (entry) => {
     const content = await client.raw(owner, repo, ref, entry.path);
     done += 1;
-    onProgress(`Downloading files ${done}/${entries.length}…`);
+    onProgress({ message: `Downloading ${done} / ${entries.length} files…`, fraction: done / entries.length });
     return { path: entry.path, content };
   });
 }

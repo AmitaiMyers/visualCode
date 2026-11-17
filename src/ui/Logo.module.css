@@ -1,0 +1,42 @@
+.logo {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+}
+
+.mark {
+  width: 22px;
+  height: 22px;
+}
+
+.ink {
+  fill: var(--ink);
+}
+
+.added {
+  fill: var(--added);
+}
+
+.modified {
+  fill: var(--modified);
+}
+
+.flow {
+  fill: none;
+  stroke: var(--ink);
+  stroke-width: 1.75;
+  stroke-linecap: round;
+}
+
+.name {
+  font: 700 17px/1 var(--font-display);
+  letter-spacing: -0.01em;
+  color: var(--text);
+}
+
+@media (max-width: 760px) {
+  .name {
+    display: none;
+  }
+}

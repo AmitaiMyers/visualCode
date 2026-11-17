@@ -5,15 +5,57 @@ import { MAX_FILES, MAX_FILE_BYTES, isSupportedSourcePath, languageOf } from "..
 import { normalizePath, stripCommonRoot } from "../util/paths";
 import { at } from "../util/assert";
 
+/** A file plus its path relative to the picked or dropped folder ("my-repo/src/a.ts"). */
+export interface LocalEntry {
+  path: string;
+  file: File;
+}
+
 /** Files picked with <input webkitdirectory>; paths come from webkitRelativePath. */
-export async function loadFromFolder(fileList: FileList): Promise<Project> {
-  const files = [...fileList];
-  if (files.length === 0) throw new Error("The selected folder is empty.");
-  const folderName = at(at(files, 0, "picked file").webkitRelativePath.split("/"), 0, "folder name");
-  const entries = files
-    .map((file) => ({ path: normalizePath(file.webkitRelativePath), file }))
-    .filter(({ path, file }) => isSupportedSourcePath(path) && file.size <= MAX_FILE_BYTES);
-  const sources = await Promise.all(entries.map(async ({ path, file }) => ({ path, content: await file.text() })));
+export function entriesFromFileList(fileList: FileList): LocalEntry[] {
+  return [...fileList].map((file) => ({ path: file.webkitRelativePath, file }));
+}
+
+/** Folders and files dropped onto the window, walked recursively. */
+export async function entriesFromDrop(items: DataTransferItemList): Promise<LocalEntry[]> {
+  const roots = [...items]
+    .filter((item) => item.kind === "file")
+    .map((item) => item.webkitGetAsEntry())
+    .filter((entry): entry is FileSystemEntry => entry !== null);
+  const nested = await Promise.all(roots.map((root) => walkEntry(root, "")));
+  return nested.flat();
+}
+
+async function walkEntry(entry: FileSystemEntry, prefix: string): Promise<LocalEntry[]> {
+  const path = prefix === "" ? entry.name : `${prefix}/${entry.name}`;
+  if (entry.isFile) {
+    const file = await new Promise<File>((resolve, reject) => (entry as FileSystemFileEntry).file(resolve, reject));
+    return [{ path, file }];
+  }
+  const children = await readAllChildren((entry as FileSystemDirectoryEntry).createReader());
+  const nested = await Promise.all(children.map((child) => walkEntry(child, path)));
+  return nested.flat();
+}
+
+/** readEntries returns results in batches; keep reading until an empty batch. */
+async function readAllChildren(reader: FileSystemDirectoryReader): Promise<FileSystemEntry[]> {
+  const all: FileSystemEntry[] = [];
+  for (;;) {
+    const batch = await new Promise<FileSystemEntry[]>((resolve, reject) => reader.readEntries(resolve, reject));
+    if (batch.length === 0) return all;
+    all.push(...batch);
+  }
+}
+
+export async function loadFromEntries(entries: LocalEntry[]): Promise<Project> {
+  if (entries.length === 0) throw new Error("The selected folder is empty.");
+  const folderName = at(at(entries, 0, "picked file").path.split("/"), 0, "folder name");
+  const sources = await Promise.all(
+    entries
+      .map(({ path, file }) => ({ path: normalizePath(path), file }))
+      .filter(({ path, file }) => isSupportedSourcePath(path) && file.size <= MAX_FILE_BYTES)
+      .map(async ({ path, file }) => ({ path, content: await file.text() })),
+  );
   return makeLocalProject(`folder:${folderName}`, folderName, sources);
 }
 
@@ -33,7 +75,7 @@ export function loadFromPaste(fileName: string, code: string, diffText: string):
   if (!hasCode && !hasDiff) throw new Error("Paste some code, a diff, or both.");
   const path = normalizePath(fileName.trim());
   if (hasCode && languageOf(path) === null) {
-    throw new Error("The file name must end in .ts, .tsx, .js, .jsx or .py so the code can be parsed.");
+    throw new Error("The file name must end in .ts, .tsx, .js, .jsx or .py so the code can be read.");
   }
   const diff: FileDiff[] = hasDiff ? parseUnifiedDiff(diffText) : [];
   return {

@@ -1,14 +1,15 @@
 import type { Story, StoryBlock, StoryEntry } from "../../graph/story";
 import { mustGet } from "../../util/assert";
 
+// Geometry from the design system: 560px cards, 40px headers, 20px code lines, 120px between columns.
 export const CARD_WIDTH = 560;
-export const STUB_WIDTH = 300;
-export const COLUMN_GAP = 140;
-export const HEADER_HEIGHT = 36;
-export const LINE_HEIGHT = 18;
+export const STUB_WIDTH = 320;
+export const COLUMN_GAP = 120;
+export const HEADER_HEIGHT = 40;
+export const LINE_HEIGHT = 20;
 export const FOOTER_HEIGHT = 28;
-export const BODY_PADDING = 8;
-export const STUB_HEIGHT = 58;
+export const BODY_PADDING = 12;
+export const STUB_HEIGHT = 56;
 export const ROW_GAP = 24;
 export const MAX_COLLAPSED_LINES = 24;
 
