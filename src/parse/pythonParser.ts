@@ -149,6 +149,7 @@ class PythonLineParser {
       parentSymbolId: parent ? parent.id : null,
       startLine: this.decoratorStartLine ?? lineNumber,
       endLine: lineNumber,
+      origin: "current",
     };
     // A redefinition replaces the earlier one in Python; keep a single symbol per id.
     const existingIndex = this.symbols.findIndex((existing) => existing.id === symbol.id);

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { contentOfAddedFile, parseUnifiedDiff } from "../diff/unifiedDiff";
+import { contentOfAddedFile, parseUnifiedDiff, reconstructBase, summarizeHunks } from "../diff/unifiedDiff";
 import { lines } from "./fixtures";
 
 const GIT_DIFF = lines(
@@ -65,5 +65,23 @@ describe("parseUnifiedDiff", () => {
 
   it("fails loudly on text that is not a diff", () => {
     expect(() => parseUnifiedDiff("hello")).toThrow(/No file changes/);
+  });
+});
+
+describe("removed code", () => {
+  const oldText = lines("a", "b", "c", "d", "e");
+  const newText = lines("a", "B", "c", "e", "f");
+  const patch = lines("@@ -1,5 +1,5 @@", " a", "-b", "+B", " c", "-d", " e", "+f");
+
+  it("keeps removed lines' text above the new line they precede", () => {
+    expect(summarizeHunks(patch).removedBefore).toEqual({ 2: [{ oldLine: 2, text: "b" }], 4: [{ oldLine: 4, text: "d" }] });
+  });
+
+  it("rebuilds the old file by applying the patch in reverse", () => {
+    expect(reconstructBase(newText, patch)).toBe(oldText);
+  });
+
+  it("refuses to rebuild when the patch does not match the code", () => {
+    expect(reconstructBase(lines("x", "y"), patch)).toBeNull();
   });
 });

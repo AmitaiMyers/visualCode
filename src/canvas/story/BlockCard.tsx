@@ -1,25 +1,26 @@
 import { memo } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
-import { Check, ChevronsDownUp, MessageSquare, X } from "lucide-react";
+import { Check, ChevronsDownUp, CornerDownRight, MessageSquare, X } from "lucide-react";
 import type { ChangeStatus, Language } from "../../model/types";
 import type { StoryBlock } from "../../graph/story";
 import { KindGlyph, StatusBadge, StepBadge } from "../../ui/Badges";
 import { tokenizeLine } from "./highlight";
-import { CARD_WIDTH, FOOTER_HEIGHT, HEADER_HEIGHT, LINE_HEIGHT, MAX_COLLAPSED_LINES, lineOffset, type CardGeometry } from "./storyLayout";
+import { CARD_WIDTH, FOOTER_HEIGHT, HEADER_HEIGHT, LINE_HEIGHT, MAX_COLLAPSED_ROWS, lineOffset, type CardGeometry, type CardRow } from "./storyLayout";
 import styles from "./StoryCanvas.module.css";
 
 export interface BlockCardData extends Record<string, unknown> {
   block: StoryBlock;
   geometry: CardGeometry;
   language: Language;
-  lines: string[];
+  rows: CardRow[]; // every row; the card renders the first geometry.shownRows
   addedLines: ReadonlySet<number>;
-  removalAnchors: ReadonlySet<number>;
+  removalAnchors: ReadonlySet<number>; // marks where lines were removed when removed rows are hidden
   callLines: number[];
   status: ChangeStatus | null;
   viewed: boolean;
   reviewable: boolean; // shows the "Mark viewed" toggle
   noteCount: number;
+  callerCount: number | null; // use sites of a changed block (null on unchanged cards)
   selected: boolean;
   traceState: "rest" | "traced" | "dimmed";
   hoveredLine: number | null;
@@ -35,14 +36,15 @@ export type BlockCardNode = Node<BlockCardData, "block">;
 
 /** One block of code in the storyline: header (step, kind, name, status) over its real source lines. */
 export const BlockCard = memo(function BlockCard({ data }: NodeProps<BlockCardNode>) {
-  const { block, geometry, lines, addedLines, removalAnchors, callLines, status, selected } = data;
+  const { block, geometry, rows, addedLines, removalAnchors, callLines, status, selected } = data;
   const callLineSet = new Set(callLines);
-  const total = block.displayEnd - block.displayStart + 1;
+  const removedBlock = block.symbol.origin === "removed";
   const classes = [
     styles.card,
     status === "added" ? styles.cardAdded : "",
     status === "modified" || status === "renamed" ? styles.cardModified : "",
     block.foreign ? styles.cardForeign : "",
+    removedBlock ? styles.cardRemoved : "",
     selected ? styles.cardSelected : "",
     data.viewed ? styles.cardViewed : "",
     styles[`trace-${data.traceState}`],
@@ -61,12 +63,18 @@ export const BlockCard = memo(function BlockCard({ data }: NodeProps<BlockCardNo
         <span className={styles.cardName} title={block.symbol.qualifiedName}>
           {block.symbol.kind === "section" ? block.symbol.name : block.symbol.qualifiedName}
         </span>
-        {block.foreign && (
+        {block.showPath && (
           <span className={styles.cardFile} title={block.symbol.filePath}>
             {block.symbol.filePath}
           </span>
         )}
         <span className={styles.cardMeta}>
+          {data.callerCount !== null && data.callerCount > 0 && (
+            <span className={styles.callerChip} data-tooltip={`Called from ${data.callerCount} ${data.callerCount === 1 ? "place" : "places"} · see Impact`}>
+              <CornerDownRight size={12} aria-hidden="true" />
+              {data.callerCount}
+            </span>
+          )}
           {status !== null && <StatusBadge status={status} viewed={data.viewed} />}
           {data.noteCount > 0 && (
             <span className={styles.noteCount} aria-label={`${data.noteCount} open notes`}>
@@ -89,7 +97,7 @@ export const BlockCard = memo(function BlockCard({ data }: NodeProps<BlockCardNo
               <Check size={14} strokeWidth={2.25} aria-hidden="true" />
             </button>
           )}
-          {!geometry.truncated && total > MAX_COLLAPSED_LINES && (
+          {!geometry.truncated && rows.length > MAX_COLLAPSED_ROWS && (
             <button
               type="button"
               className={`${styles.headButton} nodrag`}
@@ -120,8 +128,16 @@ export const BlockCard = memo(function BlockCard({ data }: NodeProps<BlockCardNo
         </span>
       </header>
       <pre className={styles.code}>
-        {lines.map((text, index) => {
-          const line = block.displayStart + index;
+        {rows.slice(0, geometry.shownRows).map((row) => {
+          if (row.kind === "removed") {
+            return (
+              <div key={`-${row.oldLine}`} className={`${styles.line} ${styles.lineRemoved}`} style={{ height: LINE_HEIGHT }} title={`Removed (old line ${row.oldLine})`}>
+                <span className={styles.lineNumber} aria-hidden="true">−</span>
+                <CodeText text={row.text} language={data.language} />
+              </div>
+            );
+          }
+          const line = row.line;
           const isCall = callLineSet.has(line);
           const lineClasses = [
             styles.line,
@@ -148,9 +164,7 @@ export const BlockCard = memo(function BlockCard({ data }: NodeProps<BlockCardNo
               title={isCall ? "Follow this call" : undefined}
             >
               <span className={styles.lineNumber}>{line}</span>
-              <span className={styles.lineText}>
-                {text === "" ? " " : tokenizeLine(text, data.language).map((token, tokenIndex) => <span key={tokenIndex} className={styles[`tok-${token.kind}`]}>{token.text}</span>)}
-              </span>
+              <CodeText text={row.text} language={data.language} />
             </div>
           );
         })}
@@ -165,7 +179,7 @@ export const BlockCard = memo(function BlockCard({ data }: NodeProps<BlockCardNo
             data.onToggleOpen(block.nodeId);
           }}
         >
-          Show all {total} lines
+          Show all {rows.length} lines
         </button>
       )}
       {callLines.map((line) => (
@@ -176,9 +190,17 @@ export const BlockCard = memo(function BlockCard({ data }: NodeProps<BlockCardNo
           id={`L${line}`}
           isConnectable={false}
           className="is-call-dot"
-          style={{ top: lineOffset(block, geometry.shownLines, geometry.truncated, line) }}
+          style={{ top: lineOffset(rows, geometry.shownRows, geometry.truncated, line) }}
         />
       ))}
     </div>
   );
 });
+
+function CodeText({ text, language }: { text: string; language: Language }) {
+  return (
+    <span className={styles.lineText}>
+      {text === "" ? " " : tokenizeLine(text, language).map((token, index) => <span key={index} className={styles[`tok-${token.kind}`]}>{token.text}</span>)}
+    </span>
+  );
+}

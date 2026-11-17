@@ -170,7 +170,16 @@ function extensionOf(path: string): string {
   return dot === -1 ? "" : name.slice(dot + 1).toLowerCase();
 }
 
+/**
+ * Manifests and deployment files, loaded as plain files by name: they tell VisualCode which apps a
+ * project has, what they depend on and how they connect (see system/detect). Lock files stay out.
+ */
+const PLAIN_FILE_NAMES = new Set([
+  "package.json", "composer.json", "requirements.txt", "go.mod", "pom.xml", "Gemfile", "Dockerfile", "Procfile", ".env.example", ".env.sample",
+]);
+
 export function languageOf(path: string): Language | null {
+  if (PLAIN_FILE_NAMES.has(basename(path))) return "plain";
   const language = LANGUAGE_BY_EXTENSION.get(extensionOf(path));
   return language === undefined ? null : language;
 }

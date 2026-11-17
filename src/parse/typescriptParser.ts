@@ -142,6 +142,7 @@ class Collector {
       parentSymbolId: parent ? parent.id : null,
       startLine,
       endLine,
+      origin: "current",
     };
     this.symbolsById.set(id, symbol);
     this.symbols.push(symbol);

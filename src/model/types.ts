@@ -21,6 +21,8 @@ export interface CodeSymbol {
   parentSymbolId: string | null; // owning class for methods
   startLine: number; // 1-based, inclusive
   endLine: number; // 1-based, inclusive
+  /** "removed" blocks exist only in the old version of a changed file; their lines refer to that version. */
+  origin: "current" | "removed";
 }
 
 /** One name bound by an import. imported is "*" for namespace/module imports, "default" for default imports. */
@@ -61,12 +63,19 @@ export interface ParsedFile {
 
 export type ChangeStatus = "added" | "modified" | "deleted" | "renamed";
 
+/** A line the diff removed, with its number in the old version of the file. */
+export interface RemovedLine {
+  oldLine: number;
+  text: string;
+}
+
 export interface FileDiff {
   path: string; // new path (old path for deleted files)
   oldPath: string | null; // set for renames
   status: ChangeStatus;
   addedLines: number[]; // line numbers in the new file
-  removalAnchors: number[]; // new-file line numbers right after which lines were removed
+  removalAnchors: number[]; // new-file lines that have removed lines directly above them
+  removedBefore: Record<number, RemovedLine[]>; // removed lines, keyed by the new-file line they sit above
   addedCount: number;
   removedCount: number;
   patch: string; // raw hunk text, for display

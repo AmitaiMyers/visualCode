@@ -184,6 +184,7 @@ class Extractor {
       parentSymbolId,
       startLine: range.startLine,
       endLine: range.endLine,
+      origin: "current",
     };
     this.ids.add(symbol.id);
     this.symbols.push(symbol);

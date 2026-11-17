@@ -17,9 +17,28 @@ points and follow arrows from each call line to the code it runs.
   each arrow starts at the exact call line. Calls into other files show as collapsed cards. Click
   **Expand** to pull that code into the story, or **Open** to jump to that file's storyline.
 - **Review**: load a GitHub pull request, or paste a unified diff. Changed files and blocks are
-  highlighted at every level; inside cards, added lines are green and removals are marked red.
+  highlighted at every level; inside cards, added lines are green and removed lines show inline,
+  struck through, where they were (toggle with **Show removed lines** in the canvas toolbar). Functions the change deletes stay
+  on the canvas as dashed "ghost" cards, read from the old version of the file, which VisualCode
+  rebuilds by applying the diff in reverse.
   Pin comments to any block, file or folder. Comments are saved in the browser (IndexedDB) and can
   be exported as Markdown or JSON, and imported again from JSON.
+- **Changes**: every changed block of the change set as one story across files, with the file path
+  on each card. Order it by **call flow**, **foundations first** (called code before its callers),
+  **tests first** or **largest first**.
+- **Impact**: the details panel's Impact tab lists who calls a block (or imports a file), grouped
+  by file, and the tests that reach it through up to three calls. Changed cards show their caller
+  count.
+- **System design**: the **System** view shows the project's apps, data stores, brokers and external
+  services, and how they connect. It is read from docker compose and Kubernetes files, package
+  manifests, client libraries in the code (Postgres, MySQL, MongoDB, Redis, Kafka, RabbitMQ, S3),
+  connection URLs, and HTTP calls matched to the routes other apps serve. Every part links to the
+  lines it was found in. Add, connect, move and remove parts; edits are saved in the browser.
+  Adding Postgres, MongoDB, Redis, Kafka, RabbitMQ or S3 opens a step-by-step guide for one of your
+  apps: the package for its language (TypeScript, Python, Go, Java), the compose service, the
+  environment variables, the client code, and the exact blocks to change (for Redis: the functions
+  that read from the database, to cache). With a Claude key, Claude can draft those changes.
+  Export the design as **Mermaid** or **Structurizr DSL** (C4).
 - **Optional AI**: paste a Claude API key in Settings to get **Explain** and **Suggest review
   notes** on a block. Answers are saved as comments. The key goes from the browser straight to
   the Anthropic API.
@@ -72,8 +91,9 @@ ingest (GitHub / folder / zip / paste)
   -> parse   TypeScript compiler API (JS/TS), line-based parser (Python)
   -> sections  module-level code between declarations becomes blocks
   -> graph   folder > file > block hierarchy; import + call edges (with call-site lines)
-  -> changes diff lines mapped onto files and blocks
+  -> changes diff lines mapped onto files and blocks; old file versions rebuilt for deleted blocks
   -> views   folder map (edges lifted to visible nodes)  |  file storyline (flow order)
+             changes story (all changed blocks)  |  system design (detected + edited)
 ```
 
 | Path | Responsibility |
@@ -87,7 +107,8 @@ ingest (GitHub / folder / zip / paste)
 | `src/state/` | Workspace store (reducer + context) and keyboard shortcuts |
 | `src/ui/` | Design-system primitives: Button, badges, fields, segmented control, dialog, toasts, logo |
 | `src/app/` | App shell: top bar, left rail (Outline / Review), canvas area, inspector, welcome, dialogs, search |
-| `src/canvas/` | Map canvas and storyline canvas (block cards, flow arrows, layout) |
+| `src/canvas/` | Map canvas, storyline canvas (block cards, flow arrows, layout) and system canvas (components, details panel, catalog, export) |
+| `src/system/` | System design: detection, technology catalog with integration guides, integration plans, saved edits, layout, Mermaid and Structurizr export |
 | `src/styles/` | `tokens.css` (generated from the design system) and global base styles |
 | `src/demo/` | The built-in demo project |
 
@@ -104,7 +125,7 @@ The UI follows the **VisualCode Design System** ("margin ink"): one ink colour f
 | N / Shift N | Next / previous changed block |
 | V | Mark the selected block viewed |
 | C | Write a note on the selected block |
-| M | Switch Map / Story |
+| M | Switch Map / Story (Changes and System are in the view switch) |
 | F | Fit the canvas |
 | Esc | Clear the selection, otherwise go up one level |
 | ? | All shortcuts |
@@ -112,8 +133,13 @@ The UI follows the **VisualCode Design System** ("margin ink"): one ink colour f
 ## Known limitations (POC)
 
 - Call resolution is name-based, not type-based. It handles local functions, imports, `this`/`self`
-  methods and `Type.method`, but not calls through variables of a type (`cart.add()` in Java),
-  dynamic dispatch, path aliases (`@/…`) or library code.
+  methods and `Type.method`. A call through a variable links only when the variable is named after
+  its class (`cart.total()` with an imported `Cart`); other variables, dynamic dispatch, path
+  aliases (`@/…`) and library code stay unlinked.
+- System detection reads conventions, not running systems: apps come from compose, Kubernetes and
+  manifests; connections from client libraries, connection URLs and HTTP calls whose paths match a
+  route another app defines. Calls built from runtime values, service meshes and infrastructure
+  defined elsewhere (Terraform, cloud consoles) are not seen; add those parts by hand.
 - Nested types and functions are part of their enclosing block rather than blocks of their own.
 - The Python parser is line-based: nested functions are part of their parent block, and only
   methods directly inside top-level classes become their own blocks.

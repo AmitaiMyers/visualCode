@@ -1,8 +1,9 @@
 import { useState } from "react";
-import { ArrowRight, Check, KeyRound, MessageSquare, Sparkles, X } from "lucide-react";
+import { ArrowRight, Check, FlaskConical, KeyRound, MessageSquare, Sparkles, X } from "lucide-react";
 import { askClaude, type AiTask } from "../ai/claude";
 import type { CodeNode, ReviewComment } from "../model/types";
 import { ancestry } from "../graph/view";
+import { TEST_SEARCH_DEPTH, impactOf } from "../graph/impact";
 import { newComment } from "../review/reviewStore";
 import { useAnalysis, useDispatch, useNavigation, useReview, useWorkspace } from "../state/workspace";
 import { errorMessage, mustGet } from "../util/assert";
@@ -15,7 +16,7 @@ import { CodeView, DiffView } from "./CodeView";
 import { NOTE_COMPOSER_ID } from "./useWorkspaceShortcuts";
 import styles from "./Inspector.module.css";
 
-type Tab = "notes" | "code" | "diff";
+type Tab = "notes" | "code" | "diff" | "impact";
 
 interface InspectorProps {
   reviewEnabled: boolean;
@@ -43,13 +44,15 @@ function InspectorBody({ node, reviewEnabled, aiKey, onAddApiKey }: InspectorPro
 
   const change = analysis.changes.get(node.id);
   const diff = node.kind === "folder" ? undefined : analysis.diffByPath.get(node.path);
-  const hasCode = node.kind !== "folder" && analysis.contents.has(node.path);
+  // Deleted blocks are read from the old version of their file.
+  const hasCode = node.kind !== "folder" && (node.symbol?.origin === "removed" || analysis.contents.has(node.path));
   const isReviewItem = reviewEnabled && review !== null && review.items.some((item) => item.nodeId === node.id);
   const isViewed = viewed.has(node.id);
 
   const tabs: { value: Tab; label: string }[] = [{ value: "notes", label: "Notes" }];
   if (hasCode) tabs.push({ value: "code", label: "Code" });
   if (diff !== undefined && diff.patch !== "") tabs.push({ value: "diff", label: "Diff" });
+  if (node.kind !== "folder") tabs.push({ value: "impact", label: "Impact" });
 
   const openAction = openActionFor(node, scopeId);
 
@@ -107,6 +110,7 @@ function InspectorBody({ node, reviewEnabled, aiKey, onAddApiKey }: InspectorPro
         {tab === "notes" && <NotesPanel node={node} aiKey={aiKey} onAddApiKey={onAddApiKey} />}
         {tab === "code" && <CodeView node={node} />}
         {tab === "diff" && diff !== undefined && <DiffView patch={diff.patch} />}
+        {tab === "impact" && <ImpactPanel node={node} />}
       </div>
     </aside>
   );
@@ -120,6 +124,63 @@ function openActionFor(node: CodeNode, scopeId: string): { label: string; target
 }
 
 // ---------------------------------------------------------------------------
+
+/** Who uses this block or file, and which tests reach it: what to check when it changes. */
+function ImpactPanel({ node }: { node: CodeNode }) {
+  const analysis = useAnalysis();
+  const navigation = useNavigation();
+  const impact = impactOf(analysis.graph, node.id);
+  const usedBy = node.kind === "file" ? "Imported by" : "Called by";
+  const subject = node.kind === "file" ? "file" : "block";
+
+  return (
+    <div className={styles.notes}>
+      <section className={styles.section} aria-label={usedBy}>
+        <span className="label">
+          {usedBy} · {impact.callerCount}
+        </span>
+        {impact.callerGroups.length === 0 && <p className="caption">Nothing in this project uses this {subject}.</p>}
+        {impact.callerGroups.map((group) => (
+          <div key={group.filePath} className={styles.impactGroup}>
+            <span className={styles.impactFile}>{group.filePath}</span>
+            <ul className={styles.impactList}>
+              {group.callers.map((caller) => (
+                <li key={`${caller.nodeId}:${caller.line ?? ""}`}>
+                  <button type="button" className={styles.noteLink} onClick={() => navigation.open(caller.nodeId)}>
+                    <ArrowRight size={12} aria-hidden="true" />
+                    {caller.label}
+                    {caller.line !== null && <span className={styles.impactLine}>line {caller.line}</span>}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))}
+      </section>
+      <section className={styles.section} aria-label="Tests that reach this">
+        <span className="label">Tests that reach this · {impact.tests.length}</span>
+        {impact.tests.length === 0 && (
+          <p className="caption">
+            No tests reach this {subject} within {TEST_SEARCH_DEPTH} calls. A change here is not covered by a test VisualCode can see.
+          </p>
+        )}
+        <ul className={styles.impactList}>
+          {impact.tests.map((test) => (
+            <li key={test.nodeId}>
+              <button type="button" className={styles.noteLink} onClick={() => navigation.open(test.nodeId)}>
+                <FlaskConical size={12} aria-hidden="true" />
+                {test.label}
+                <span className={styles.impactLine}>
+                  {test.filePath} · {test.distance === 1 ? "direct" : `${test.distance} calls away`}
+                </span>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </div>
+  );
+}
 
 function NotesPanel({ node, aiKey, onAddApiKey }: { node: CodeNode; aiKey: string; onAddApiKey: () => void }) {
   const analysis = useAnalysis();

@@ -199,13 +199,15 @@ interface WorkspaceProps {
 
 /** Rail, canvas and inspector for a loaded project. */
 function Workspace({ railOpen, reviewEnabled, aiKey, onCloseRail, onReviewDiff, onAddApiKey }: WorkspaceProps) {
-  const { inspectorOpen } = useWorkspace();
+  const { inspectorOpen, canvasView } = useWorkspace();
   useWorkspaceShortcuts(reviewEnabled);
+  // The system view has its own details panel; the code inspector would describe a block that is not on screen.
+  const showInspector = inspectorOpen && canvasView !== "system";
   return (
-    <main className={styles.workspace} data-rail={railOpen ? "open" : "closed"} data-inspector={inspectorOpen ? "open" : "closed"}>
+    <main className={styles.workspace} data-rail={railOpen ? "open" : "closed"} data-inspector={showInspector ? "open" : "closed"}>
       {railOpen && <LeftRail reviewEnabled={reviewEnabled} onClose={onCloseRail} />}
-      <CanvasArea reviewEnabled={reviewEnabled} onReviewDiff={onReviewDiff} />
-      {inspectorOpen && <Inspector reviewEnabled={reviewEnabled} aiKey={aiKey} onAddApiKey={onAddApiKey} />}
+      <CanvasArea reviewEnabled={reviewEnabled} aiKey={aiKey} onReviewDiff={onReviewDiff} onAddApiKey={onAddApiKey} />
+      {showInspector && <Inspector reviewEnabled={reviewEnabled} aiKey={aiKey} onAddApiKey={onAddApiKey} />}
     </main>
   );
 }

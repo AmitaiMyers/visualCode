@@ -36,12 +36,12 @@
   border-left-color: var(--added);
 }
 
-.removal::after {
+.removal::before {
   content: "";
   position: absolute;
   left: 40px;
   right: 0;
-  bottom: 0;
+  top: 0;
   height: 2px;
   background: var(--deleted);
 }
@@ -58,4 +58,9 @@
 
 .hunk {
   color: var(--text-muted);
+}
+
+.removedBlock .text {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--deleted) 35%, transparent);
 }

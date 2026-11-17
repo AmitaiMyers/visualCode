@@ -19,6 +19,15 @@ describe("demo project", () => {
     expect(changes.get(symbolId("src/checkout/pricing.ts", "applyDiscount"))?.status).toBe("modified");
     expect(changes.get(symbolId("src/checkout/pricing.ts", "taxFor"))).toBeUndefined();
   });
+
+  it("keeps deleted functions as removed blocks read from the old version", () => {
+    const analysis = demo();
+    const removed = analysis.graph.nodes.get(symbolId("src/checkout/payment.ts", "logCharge"))!.symbol!;
+    expect(removed.origin).toBe("removed");
+    expect(analysis.changes.get(removed.id)?.status).toBe("deleted");
+    const oldLines = analysis.baseContents.get("src/checkout/payment.ts")!.split("\n").slice(removed.startLine - 1, removed.endLine);
+    expect(oldLines[0]).toBe("function logCharge(amount: number): void {");
+  });
 });
 
 describe("reviewOrder", () => {
@@ -33,6 +42,7 @@ describe("reviewOrder", () => {
       "src/checkout/coupons.ts:setup",
       "src/checkout/coupons.ts:findCoupon",
       "src/checkout/payment.ts:chargeCard",
+      "src/checkout/payment.ts:logCharge", // deleted in this PR: shown from the old version
       "src/checkout/pricing.ts:imports",
       "src/checkout/pricing.ts:applyDiscount",
     ]);

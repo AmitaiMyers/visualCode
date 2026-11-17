@@ -176,6 +176,7 @@ function groupIntoSections(path: string, paragraphs: Paragraph[], rules: Section
       parentSymbolId: null,
       startLine: paragraph.startLine,
       endLine: paragraph.endLine,
+      origin: "current",
     };
     sections.push(symbol);
     previous = { category, symbol, endLine: paragraph.endLine, depth: openBrackets(paragraph.lines) };

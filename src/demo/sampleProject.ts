@@ -1,4 +1,4 @@
-// Built-in demo for "Try the demo": a small checkout service and one pull request's worth of changes.
+// Built-in demo for "Try the demo": a small checkout system (web, API, database) and one pull request's worth of changes.
 // Generated with a real diff tool so the diff's line numbers match the new file contents exactly.
 import type { SourceFile } from "../model/types";
 
@@ -7,8 +7,20 @@ export const DEMO_ID = "demo:acme-checkout-128";
 
 export const DEMO_FILES: SourceFile[] = [
   {
+    "path": "docker-compose.yml",
+    "content": "services:\n  web:\n    build: ./web\n    ports:\n      - \"5173:5173\"\n    depends_on:\n      - api\n  api:\n    build: .\n    ports:\n      - \"3000:3000\"\n    environment:\n      DATABASE_URL: postgres://shop:shop@db:5432/shop\n    depends_on:\n      - db\n  db:\n    image: postgres:16-alpine\n    environment:\n      POSTGRES_USER: shop\n      POSTGRES_PASSWORD: shop\n      POSTGRES_DB: shop\n"
+  },
+  {
+    "path": "package.json",
+    "content": "{\n  \"name\": \"acme-checkout\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"dependencies\": {\n    \"express\": \"^5.1.0\",\n    \"pg\": \"^8.16.0\"\n  }\n}\n"
+  },
+  {
     "path": "scripts/daily_report.py",
     "content": "import json\nfrom pathlib import Path\n\nREPORT_PATH = Path(\"orders.json\")\n\n\ndef load_orders(path):\n    return json.loads(path.read_text())\n\n\ndef revenue(orders):\n    return sum(order[\"total\"] for order in orders)\n\n\ndef summarize(orders):\n    return f\"{len(orders)} orders, revenue {revenue(orders):.2f}\"\n\n\nif __name__ == \"__main__\":\n    print(summarize(load_orders(REPORT_PATH)))\n"
+  },
+  {
+    "path": "src/checkout/cart.test.ts",
+    "content": "import { describe, expect, it } from \"vitest\";\nimport { Cart } from \"./cart\";\n\ndescribe(\"Cart\", () => {\n  it(\"adds tax to the subtotal\", () => {\n    const cart = new Cart();\n    cart.add({ sku: \"mug\", unitPrice: 10, quantity: 2 });\n    expect(cart.total(null)).toBeCloseTo(21.6);\n  });\n});\n"
   },
   {
     "path": "src/checkout/cart.ts",
@@ -31,8 +43,24 @@ export const DEMO_FILES: SourceFile[] = [
     "content": "import { findCoupon } from \"./coupons\";\n\nconst TAX_RATE = 0.17;\n\nexport function applyDiscount(subtotal: number, code: string | null): number {\n  if (code === null) {\n    return subtotal;\n  }\n  const coupon = findCoupon(code);\n  return Math.max(0, subtotal - coupon.amountOff(subtotal));\n}\n\nexport function taxFor(amount: number): number {\n  return amount * TAX_RATE;\n}\n"
   },
   {
+    "path": "src/db/orders.ts",
+    "content": "import pg from \"pg\";\n\nconst pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });\n\nexport interface Order {\n  id: string;\n  total: number;\n  receipt: string;\n}\n\nexport async function saveOrder(total: number, receipt: string): Promise<string> {\n  const result = await pool.query(\"INSERT INTO orders (total, receipt) VALUES ($1, $2) RETURNING id\", [total, receipt]);\n  return result.rows[0].id;\n}\n\nexport async function findOrder(id: string): Promise<Order | null> {\n  const result = await pool.query(\"SELECT id, total, receipt FROM orders WHERE id = $1\", [id]);\n  return result.rows[0] ?? null;\n}\n"
+  },
+  {
+    "path": "src/server.ts",
+    "content": "import express from \"express\";\nimport { Cart } from \"./checkout/cart\";\nimport { runCheckout } from \"./checkout\";\nimport { findOrder, saveOrder } from \"./db/orders\";\n\nconst app = express();\napp.use(express.json());\n\nasync function handleCheckout(req: express.Request, res: express.Response): Promise<void> {\n  const cart = new Cart();\n  for (const item of req.body.items) {\n    cart.add(item);\n  }\n  const message = await runCheckout(cart, req.body.cardToken, req.body.coupon);\n  const orderId = await saveOrder(cart.total(req.body.coupon), message);\n  res.json({ orderId, message });\n}\n\nasync function handleGetOrder(req: express.Request, res: express.Response): Promise<void> {\n  const order = await findOrder(req.params.id);\n  if (order === null) {\n    res.status(404).json({ error: \"Order not found\" });\n    return;\n  }\n  res.json(order);\n}\n\napp.post(\"/api/checkout\", handleCheckout);\napp.get(\"/api/orders/:id\", handleGetOrder);\n\napp.listen(3000);\n"
+  },
+  {
     "path": "src/util/format.ts",
     "content": "export function formatMoney(amount: number): string {\n  return `$${amount.toFixed(2)}`;\n}\n"
+  },
+  {
+    "path": "web/package.json",
+    "content": "{\n  \"name\": \"acme-checkout-web\",\n  \"private\": true,\n  \"type\": \"module\",\n  \"dependencies\": {\n    \"react\": \"^19.1.0\",\n    \"react-dom\": \"^19.1.0\"\n  }\n}\n"
+  },
+  {
+    "path": "web/src/api.ts",
+    "content": "export interface CheckoutRequest {\n  items: { sku: string; unitPrice: number; quantity: number }[];\n  cardToken: string;\n  coupon: string | null;\n}\n\nexport async function checkout(request: CheckoutRequest): Promise<{ orderId: string; message: string }> {\n  const response = await fetch(\"/api/checkout\", {\n    method: \"POST\",\n    headers: { \"Content-Type\": \"application/json\" },\n    body: JSON.stringify(request),\n  });\n  return response.json();\n}\n\nexport async function loadOrder(orderId: string): Promise<unknown> {\n  const response = await fetch(`/api/orders/${orderId}`);\n  return response.json();\n}\n"
   }
 ];
 

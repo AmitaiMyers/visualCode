@@ -58,6 +58,8 @@ export class CallResolver {
       // e.g. imported class Foo, then Foo.create()
       return this.firstIn(imported.targetPaths, `${imported.imported}.${call.name}`) ?? this.resolveImportedName(imported, call.qualifier);
     }
+    const instanceMethod = this.methodOfNamesake(parsed, call.qualifier, call.name, names);
+    if (instanceMethod !== null) return instanceMethod;
     const sameFileMember = this.symbolIn(parsed.path, `${call.qualifier}.${call.name}`);
     if (sameFileMember !== null || !info.nameFallback) return sameFileMember;
 
@@ -68,6 +70,22 @@ export class CallResolver {
       return this.symbolIn(typeSymbol.filePath, `${typeSymbol.qualifiedName}.${call.name}`) ?? type;
     }
     return /^[a-z_]/.test(call.qualifier) ? this.byName(parsed, call.name) : null;
+  }
+
+  /**
+   * A variable named after its class (`cart` holding a `Cart`, `orderStore` an `OrderStore`) calls that class's
+   * method. Without types this naming convention is the only signal; it links only when the class is imported
+   * or defined in the same file and really has the method.
+   */
+  private methodOfNamesake(parsed: ParsedFile, variable: string, method: string, names: Map<string, ImportedName>): string | null {
+    if (!/^[a-z]/.test(variable)) return null;
+    const className = `${variable.charAt(0).toUpperCase()}${variable.slice(1)}`;
+    const imported = names.get(className);
+    if (imported !== undefined && imported.imported !== "*") {
+      const exportedName = imported.imported === "default" ? className : imported.imported;
+      return this.firstIn(imported.targetPaths, `${exportedName}.${method}`);
+    }
+    return this.symbolIn(parsed.path, `${className}.${method}`);
   }
 
   /** A unique top-level definition of `name`: first in the caller's folder (same package), then anywhere. */

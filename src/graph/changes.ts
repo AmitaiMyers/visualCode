@@ -54,7 +54,8 @@ function changedSymbols(graph: CodeGraph, fileNodeId: string, diff: FileDiff): M
   const visit = (nodeId: string): void => {
     const node = mustGet(graph.nodes, nodeId, "Symbol node");
     if (node.symbol !== null) {
-      const status = symbolStatus(diff.status, ownLines(graph, nodeId), added, touched);
+      // Removed blocks only exist in the old version: they are deleted by definition.
+      const status = node.symbol.origin === "removed" ? "deleted" : symbolStatus(diff.status, ownLines(graph, nodeId), added, touched);
       if (status !== null) result.set(nodeId, status);
     }
     node.childIds.forEach(visit);
@@ -68,11 +69,13 @@ function ownLines(graph: CodeGraph, nodeId: string): number[] {
   const node = mustGet(graph.nodes, nodeId, "Symbol node");
   const symbol = node.symbol;
   if (symbol === null) throw new Error(`Not a symbol: ${nodeId}`);
-  const childRanges = node.childIds.map((childId) => {
-    const child = mustGet(graph.nodes, childId, "Nested symbol").symbol;
-    if (child === null) throw new Error(`Nested node is not a symbol: ${childId}`);
-    return child;
-  });
+  const childRanges = node.childIds
+    .map((childId) => {
+      const child = mustGet(graph.nodes, childId, "Nested symbol").symbol;
+      if (child === null) throw new Error(`Nested node is not a symbol: ${childId}`);
+      return child;
+    })
+    .filter((child) => child.origin === "current"); // removed children's lines belong to the old version
   const lines: number[] = [];
   for (let line = symbol.startLine; line <= symbol.endLine; line += 1) {
     if (!childRanges.some((child) => line >= child.startLine && line <= child.endLine)) lines.push(line);

@@ -1,6 +1,7 @@
 import { createContext, useContext, useEffect, useMemo, useReducer, type Dispatch, type ReactNode } from "react";
 import type { Analysis } from "../analysis/analyze";
 import type { CodeGraph, ReviewComment } from "../model/types";
+import type { ChangeOrder } from "../graph/story";
 import { fileId } from "../model/ids";
 import { initialScope, rollUpCounts } from "../graph/view";
 import { reviewOrder, type ReviewItem } from "../graph/reviewOrder";
@@ -8,6 +9,7 @@ import { saveComments, saveViewed } from "../review/reviewStore";
 import { mustGet } from "../util/assert";
 
 export type RailTab = "outline" | "review";
+export type CanvasView = "scope" | "changes" | "system";
 
 export interface WorkspaceState {
   analysis: Analysis | null;
@@ -19,6 +21,11 @@ export interface WorkspaceState {
   selectedId: string | null;
   expandedByFile: ReadonlyMap<string, ReadonlySet<string>>;
   changedOnly: boolean;
+  /** Story cards show the lines a diff removed, inline above where they were. */
+  showRemoved: boolean;
+  /** What the canvas shows: the scope's map or storyline, every changed block as one story, or the system design. */
+  canvasView: CanvasView;
+  changeOrder: ChangeOrder;
   rail: RailTab;
   inspectorOpen: boolean;
   /** Whether selecting something opens the details panel. Off on phones, where it would cover the canvas. */
@@ -37,6 +44,9 @@ export type WorkspaceAction =
   | { type: "select"; nodeId: string | null }
   | { type: "setExpanded"; filePath: string; nodeId: string; expanded: boolean }
   | { type: "setChangedOnly"; value: boolean }
+  | { type: "setShowRemoved"; value: boolean }
+  | { type: "setCanvasView"; view: CanvasView }
+  | { type: "setChangeOrder"; order: ChangeOrder }
   | { type: "setRail"; rail: RailTab }
   | { type: "setInspectorOpen"; open: boolean }
   | { type: "addComment"; comment: ReviewComment }
@@ -54,10 +64,19 @@ const INITIAL_STATE: WorkspaceState = {
   selectedId: null,
   expandedByFile: new Map(),
   changedOnly: false,
+  showRemoved: true,
+  canvasView: "scope",
+  changeOrder: "flow",
   rail: "outline",
   inspectorOpen: true,
   autoOpenInspector: true,
 };
+
+function isChangedBlock(state: WorkspaceState, nodeId: string): boolean {
+  if (state.analysis === null) throw new Error("No project is loaded");
+  const change = state.analysis.changes.get(nodeId);
+  return change !== undefined && change.status !== null && mustGet(state.analysis.graph.nodes, nodeId, "Node").kind === "symbol";
+}
 
 function reviewChange(state: WorkspaceState, patch: Partial<Pick<WorkspaceState, "comments" | "viewed">>): WorkspaceState {
   return { ...state, ...patch, reviewDirty: true };
@@ -78,7 +97,9 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       };
     }
     case "navigate":
-      return { ...state, scopeId: action.scopeId, selectedId: action.selectedId };
+      // Opening a changed block while reading the Changes story selects it there; anything else leaves the story.
+      if (state.canvasView === "changes" && action.selectedId !== null && isChangedBlock(state, action.selectedId)) return { ...state, selectedId: action.selectedId };
+      return { ...state, scopeId: action.scopeId, selectedId: action.selectedId, canvasView: "scope" };
     case "select":
       return { ...state, selectedId: action.nodeId, inspectorOpen: action.nodeId !== null && state.autoOpenInspector ? true : state.inspectorOpen };
     case "setExpanded": {
@@ -91,6 +112,12 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
     }
     case "setChangedOnly":
       return { ...state, changedOnly: action.value };
+    case "setShowRemoved":
+      return { ...state, showRemoved: action.value };
+    case "setCanvasView":
+      return { ...state, canvasView: action.view };
+    case "setChangeOrder":
+      return { ...state, changeOrder: action.order };
     case "setRail":
       return { ...state, rail: action.rail };
     case "setInspectorOpen":

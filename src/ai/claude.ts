@@ -1,4 +1,5 @@
 import type { Analysis } from "../analysis/analyze";
+import { symbolLines } from "../analysis/source";
 import type { CodeNode } from "../model/types";
 
 const MODEL = "claude-opus-5-5";
@@ -16,6 +17,11 @@ const SYSTEM_PROMPT =
  * The key is sent straight from the browser to the Anthropic API.
  */
 export async function askClaude(apiKey: string, analysis: Analysis, node: CodeNode, task: AiTask): Promise<string> {
+  return completeWithClaude(apiKey, SYSTEM_PROMPT, buildPrompt(analysis, node, task));
+}
+
+/** One request to Claude with the reader's key; returns the answer's text, or throws on a refusal or an empty answer. */
+export async function completeWithClaude(apiKey: string, system: string, prompt: string): Promise<string> {
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const response = await client.beta.messages.create({
@@ -25,8 +31,8 @@ export async function askClaude(apiKey: string, analysis: Analysis, node: CodeNo
     // If the model declines for policy reasons, let the API retry on its default fallback model.
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
-    system: SYSTEM_PROMPT,
-    messages: [{ role: "user", content: buildPrompt(analysis, node, task) }],
+    system,
+    messages: [{ role: "user", content: prompt }],
   });
   if (response.stop_reason === "refusal") {
     throw new Error("Claude declined to answer this request.");
@@ -51,6 +57,7 @@ function buildPrompt(analysis: Analysis, node: CodeNode, task: AiTask): string {
     `${instruction}`,
     `Location: ${describeNode(node)}`,
     change && change.status !== null ? `Change status: ${change.status}` : "",
+    node.symbol !== null && node.symbol.origin === "removed" ? "This block was deleted by the change; the source below is its old version." : "",
     `<source path="${filePath}">\n${source}\n</source>`,
     diff && diff.patch !== "" ? `<diff path="${filePath}">\n${truncate(diff.patch)}\n</diff>` : "",
   ];
@@ -67,12 +74,9 @@ function sourceFor(analysis: Analysis, node: CodeNode): string {
   if (node.kind === "folder") {
     throw new Error("AI actions work on files and code blocks, not folders.");
   }
+  if (node.symbol !== null) return truncate(symbolLines(analysis, node.symbol).join("\n"));
   const content = analysis.contents.get(node.path);
-  if (content === undefined) return "(file deleted in this change)";
-  if (node.symbol === null) return truncate(content);
-  const lines = content.split("\n");
-  const { startLine, endLine } = node.symbol;
-  return truncate(lines.slice(startLine - 1, endLine).join("\n"));
+  return content === undefined ? "(file deleted in this change)" : truncate(content);
 }
 
 function truncate(text: string): string {

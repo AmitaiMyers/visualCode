@@ -1,4 +1,4 @@
-import type { ChangeStatus, FileDiff } from "../model/types";
+import type { ChangeStatus, FileDiff, RemovedLine } from "../model/types";
 import { at } from "../util/assert";
 
 const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
@@ -6,40 +6,97 @@ const HUNK_HEADER = /^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
 interface HunkSummary {
   addedLines: number[];
   removalAnchors: number[];
+  removedBefore: Record<number, RemovedLine[]>;
   addedCount: number;
   removedCount: number;
 }
 
-/**
- * Reads the hunks of one file's patch (the part starting at the first "@@").
- * Line numbers refer to the new version of the file.
- */
-export function summarizeHunks(patch: string): HunkSummary {
-  const summary: HunkSummary = { addedLines: [], removalAnchors: [], addedCount: 0, removedCount: 0 };
-  let newLine = 0;
-  let inHunk = false;
+interface Hunk {
+  oldStart: number; // first old-file line the hunk covers (for an empty old side: the line it comes before)
+  newStart: number; // first new-file line the hunk covers (for an empty new side: the line it comes before)
+  lines: string[]; // raw " ", "+", "-" lines
+}
+
+/** Splits a patch into hunks. Lines outside hunks and "\ No newline" markers are dropped. */
+function readHunks(patch: string): Hunk[] {
+  const hunks: Hunk[] = [];
+  let current: Hunk | null = null;
   for (const line of patch.split("\n")) {
     const header = HUNK_HEADER.exec(line);
     if (header) {
-      newLine = Number(at(header, 3, "hunk new start"));
-      inHunk = true;
+      // "+5,0" means "after line 5": the removed lines sit before line 6 (likewise "-5,0" for added lines).
+      current = { oldStart: sideStart(at(header, 1, "hunk old start"), header[2]), newStart: sideStart(at(header, 3, "hunk new start"), header[4]), lines: [] };
+      hunks.push(current);
       continue;
     }
-    if (!inHunk) continue;
-    if (line.startsWith("+")) {
-      summary.addedLines.push(newLine);
-      summary.addedCount += 1;
-      newLine += 1;
-    } else if (line.startsWith("-")) {
-      summary.removalAnchors.push(Math.max(1, newLine));
-      summary.removedCount += 1;
-    } else if (line.startsWith(" ") || line === "") {
-      newLine += 1;
+    if (current !== null && (line.startsWith("+") || line.startsWith("-") || line.startsWith(" ") || line === "")) {
+      current.lines.push(line);
     }
-    // "\ No newline at end of file" and other markers do not advance the line counter.
   }
-  summary.removalAnchors = [...new Set(summary.removalAnchors)];
+  return hunks;
+}
+
+function sideStart(start: string, count: string | undefined): number {
+  return count === "0" ? Number(start) + 1 : Number(start);
+}
+
+/**
+ * Reads the hunks of one file's patch (the part starting at the first "@@").
+ * Line numbers refer to the new version of the file; removed lines are keyed by the new line they sit above.
+ */
+export function summarizeHunks(patch: string): HunkSummary {
+  const summary: HunkSummary = { addedLines: [], removalAnchors: [], removedBefore: {}, addedCount: 0, removedCount: 0 };
+  for (const hunk of readHunks(patch)) {
+    let newLine = hunk.newStart;
+    let oldLine = hunk.oldStart;
+    for (const line of hunk.lines) {
+      if (line.startsWith("+")) {
+        summary.addedLines.push(newLine);
+        summary.addedCount += 1;
+        newLine += 1;
+      } else if (line.startsWith("-")) {
+        const anchor = Math.max(1, newLine);
+        if (summary.removedBefore[anchor] === undefined) summary.removedBefore[anchor] = [];
+        summary.removedBefore[anchor].push({ oldLine, text: line.slice(1) });
+        summary.removedCount += 1;
+        oldLine += 1;
+      } else {
+        newLine += 1;
+        oldLine += 1;
+      }
+    }
+  }
+  summary.removalAnchors = Object.keys(summary.removedBefore).map(Number);
   return summary;
+}
+
+/**
+ * Rebuilds the old version of a file by applying its patch in reverse to the new version.
+ * Returns null when the patch's context lines do not match the code (the diff belongs to other code).
+ */
+export function reconstructBase(newContent: string, patch: string): string | null {
+  const newLines = newContent.split("\n");
+  const oldLines: string[] = [];
+  let next = 1; // next new-file line not yet copied
+  for (const hunk of readHunks(patch)) {
+    if (hunk.newStart < next) return null; // overlapping or unordered hunks
+    oldLines.push(...newLines.slice(next - 1, hunk.newStart - 1));
+    next = hunk.newStart;
+    for (const line of hunk.lines) {
+      if (line.startsWith("-")) {
+        oldLines.push(line.slice(1));
+        continue;
+      }
+      if (line.startsWith(" ") || line === "") {
+        const text = line === "" ? "" : line.slice(1);
+        if (newLines[next - 1] !== text) return null;
+        oldLines.push(text);
+      }
+      next += 1; // context and "+" lines both consume a new-file line
+    }
+  }
+  oldLines.push(...newLines.slice(next - 1));
+  return oldLines.join("\n");
 }
 
 /** Parses a multi-file unified diff (git diff / GitHub .diff format). */
@@ -144,6 +201,16 @@ function statusFor(oldPath: string | null, newPath: string | null, isRename: boo
   if (newPath === null) return "deleted";
   if (isRename || oldPath !== newPath) return "renamed";
   return "modified";
+}
+
+/** The old content of a deleted file: all "-" lines of its patch. */
+export function contentOfDeletedFile(diff: FileDiff): string {
+  if (diff.status !== "deleted") throw new Error(`Cannot rebuild deleted content of ${diff.path}: status is ${diff.status}`);
+  return diff.patch
+    .split("\n")
+    .filter((line) => line.startsWith("-"))
+    .map((line) => line.slice(1))
+    .join("\n");
 }
 
 /** Rebuilds the content of a newly added file from its patch (all "+" lines). */

@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from "react";
 import { Background, BackgroundVariant, MiniMap, Panel, ReactFlow, useReactFlow } from "@xyflow/react";
-import { ChevronDown, ChevronUp, Map as MapIcon, Maximize, ZoomIn, ZoomOut } from "lucide-react";
+import { ChevronDown, ChevronUp, Diff, Map as MapIcon, Maximize, ZoomIn, ZoomOut } from "lucide-react";
 import type { Analysis } from "../../analysis/analyze";
 import type { ChangeStatus, Language } from "../../model/types";
 import { languageOf } from "../../parse/language";
-import { buildStory, type StoryBlock } from "../../graph/story";
+import { buildChangeStory, buildStory, type ChangeOrder, type Story, type StoryBlock } from "../../graph/story";
+import { changeSize, fileLines, removedLinesAbove } from "../../analysis/source";
+import { callerCount } from "../../graph/impact";
 import { fileId } from "../../model/ids";
 import { useShortcuts } from "../../state/useShortcuts";
 import { useAnalysis, useDispatch, useNavigation, useNoteCounts, useReview, useWorkspace } from "../../state/workspace";
@@ -14,7 +16,7 @@ import { kindWord, statusWord } from "../../ui/Badges";
 import { BlockCard, type BlockCardNode } from "./BlockCard";
 import { FlowEdge, FlowMarkers, type FlowEdgeType, type FlowState } from "./FlowEdge";
 import { StubCard, type StubCardNode } from "./StubCard";
-import { CARD_WIDTH, STUB_HEIGHT, STUB_WIDTH, layoutStory, type CardGeometry } from "./storyLayout";
+import { CARD_WIDTH, STUB_HEIGHT, STUB_WIDTH, cardRows, layoutStory, type CardRow } from "./storyLayout";
 import styles from "./StoryCanvas.module.css";
 
 const NODE_TYPES = { block: BlockCard, stub: StubCard };
@@ -26,8 +28,8 @@ const DRAW_START_MS = 320;
 const DRAW_STEP_MS = 45;
 const CAMERA_MS = 420;
 
-/** Files whose arrows already drew themselves this session: the draw-in plays once per file. */
-const drawnFiles = new Set<string>();
+/** Stories whose arrows already drew themselves this session: the draw-in plays once per story. */
+const drawnStories = new Set<string>();
 
 function cameraDuration(): number {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : CAMERA_MS;
@@ -39,9 +41,65 @@ interface Hover {
 }
 
 /** The storyline of one file: blocks in reading order, branches to the right, ink arrows from call lines. */
-export function StoryCanvas({ filePath, reviewEnabled }: { filePath: string; reviewEnabled: boolean }) {
+export function FileStoryCanvas({ filePath, reviewEnabled }: { filePath: string; reviewEnabled: boolean }) {
   const analysis = useAnalysis();
-  const { selectedId, expandedByFile, viewed } = useWorkspace();
+  const { expandedByFile } = useWorkspace();
+  const dispatch = useDispatch();
+  const expanded = expandedByFile.get(filePath) ?? EMPTY_SET;
+  const story = useMemo(() => buildStory(analysis.graph, filePath, expanded), [analysis, filePath, expanded]);
+  const onExpand = useCallback(
+    (nodeId: string) => {
+      dispatch({ type: "setExpanded", filePath, nodeId, expanded: true });
+      dispatch({ type: "select", nodeId });
+    },
+    [dispatch, filePath],
+  );
+  const onCollapse = useCallback((nodeId: string) => dispatch({ type: "setExpanded", filePath, nodeId, expanded: false }), [dispatch, filePath]);
+  return (
+    <StoryView
+      story={story}
+      storyKey={`file:${filePath}`}
+      reviewEnabled={reviewEnabled}
+      onExpand={onExpand}
+      onCollapse={onCollapse}
+      emptyTitle="There is no code to show"
+      emptyText="This file was deleted in this change. Its diff is in the details panel."
+    />
+  );
+}
+
+/** Every changed block of the change set, across files, in the reviewer's chosen order. */
+export function ChangesStoryCanvas({ order, reviewEnabled }: { order: ChangeOrder; reviewEnabled: boolean }) {
+  const analysis = useAnalysis();
+  const story = useMemo(() => buildChangeStory(analysis.graph, analysis.changes, order, (symbol) => changeSize(analysis, symbol)), [analysis, order]);
+  return (
+    <StoryView
+      story={story}
+      storyKey={`changes:${order}`}
+      reviewEnabled={reviewEnabled}
+      onExpand={NO_OP}
+      onCollapse={NO_OP}
+      emptyTitle="No changed blocks"
+      emptyText="This diff changes no code blocks VisualCode can read."
+    />
+  );
+}
+
+const NO_OP = (): void => {};
+
+interface StoryViewProps {
+  story: Story;
+  storyKey: string; // identifies the story for the once-per-session draw-in
+  reviewEnabled: boolean;
+  onExpand: (nodeId: string) => void;
+  onCollapse: (nodeId: string) => void;
+  emptyTitle: string;
+  emptyText: string;
+}
+
+function StoryView({ story, storyKey, reviewEnabled, onExpand, onCollapse, emptyTitle, emptyText }: StoryViewProps) {
+  const analysis = useAnalysis();
+  const { selectedId, viewed, showRemoved } = useWorkspace();
   const dispatch = useDispatch();
   const navigation = useNavigation();
   const noteCounts = useNoteCounts();
@@ -50,15 +108,21 @@ export function StoryCanvas({ filePath, reviewEnabled }: { filePath: string; rev
   const [openCards, setOpenCards] = useState<ReadonlySet<string>>(EMPTY_SET);
   const [hover, setHover] = useState<Hover | null>(null);
   const [showMinimap, setShowMinimap] = useState(false);
-  const [animate] = useState(() => !drawnFiles.has(filePath));
+  const [animate] = useState(() => !drawnStories.has(storyKey));
+  const hasDiff = analysis.diffByPath.size > 0;
 
   useEffect(() => {
-    drawnFiles.add(filePath);
-  }, [filePath]);
+    drawnStories.add(storyKey);
+  }, [storyKey]);
 
-  const expanded = expandedByFile.get(filePath) ?? EMPTY_SET;
-  const story = useMemo(() => buildStory(analysis.graph, filePath, expanded), [analysis, filePath, expanded]);
-  const geometry = useMemo(() => layoutStory(story, openCards), [story, openCards]);
+  const rowsByNode = useMemo(() => {
+    const rows = new Map<string, CardRow[]>();
+    for (const { item } of story.entries) {
+      if (item.type === "block") rows.set(item.nodeId, blockRows(analysis, item, showRemoved));
+    }
+    return rows;
+  }, [analysis, story, showRemoved]);
+  const geometry = useMemo(() => layoutStory(story, (nodeId) => mustGet(rowsByNode, nodeId, "Card rows"), openCards), [story, rowsByNode, openCards]);
   const blocks = useMemo(() => story.entries.flatMap(({ item }) => (item.type === "block" ? [item] : [])), [story]);
   const reviewable = useMemo(() => new Set(reviewEnabled && review !== null ? review.items.map((item) => item.nodeId) : []), [reviewEnabled, review]);
 
@@ -126,11 +190,6 @@ export function StoryCanvas({ filePath, reviewEnabled }: { filePath: string; rev
     [],
   );
   const onToggleViewed = useCallback((nodeId: string) => dispatch({ type: "setViewed", nodeId, viewed: !viewed.has(nodeId) }), [dispatch, viewed]);
-  const onExpand = useCallback((nodeId: string) => {
-    dispatch({ type: "setExpanded", filePath, nodeId, expanded: true });
-    dispatch({ type: "select", nodeId });
-  }, [dispatch, filePath]);
-  const onCollapse = useCallback((nodeId: string) => dispatch({ type: "setExpanded", filePath, nodeId, expanded: false }), [dispatch, filePath]);
   const onOpenFile = useCallback((path: string) => navigation.open(fileId(path)), [navigation]);
 
   // ----- tracing: which arrows and cards light up -----
@@ -191,7 +250,8 @@ export function StoryCanvas({ filePath, reviewEnabled }: { filePath: string; rev
       height: card.height,
       ariaLabel: blockLabel(item, blocks.length, status, noteCounts.get(item.nodeId) ?? 0, viewed.has(item.nodeId)),
       data: {
-        ...blockSource(analysis, item, card),
+        ...diffMarks(analysis, item, showRemoved),
+        rows: mustGet(rowsByNode, item.nodeId, "Card rows"),
         block: item,
         geometry: card,
         language: languageOfBlock(item),
@@ -200,6 +260,7 @@ export function StoryCanvas({ filePath, reviewEnabled }: { filePath: string; rev
         viewed: viewed.has(item.nodeId),
         reviewable: reviewable.has(item.nodeId),
         noteCount: noteCounts.get(item.nodeId) ?? 0,
+        callerCount: status === null ? null : callerCount(analysis.graph, item.nodeId),
         selected: item.nodeId === selectedId,
         traceState: cardTrace(item.nodeId),
         hoveredLine: hover !== null && hover.nodeId === item.nodeId ? hover.line : null,
@@ -246,8 +307,8 @@ export function StoryCanvas({ filePath, reviewEnabled }: { filePath: string; rev
   if (story.entries.length === 0) {
     return (
       <div className={styles.empty}>
-        <h2>There is no code to show</h2>
-        <p className="muted">This file was deleted in this change. Its diff is in the details panel.</p>
+        <h2>{emptyTitle}</h2>
+        <p className="muted">{emptyText}</p>
       </div>
     );
   }
@@ -292,6 +353,9 @@ export function StoryCanvas({ filePath, reviewEnabled }: { filePath: string; rev
           <IconButton icon={ZoomIn} label="Zoom in" tooltipSide="top" onClick={() => void flow.zoomIn({ duration: 160 })} />
           <IconButton icon={Maximize} label="Fit to content" shortcut="F" tooltipSide="top" onClick={fit} />
           <IconButton icon={MapIcon} label="Minimap" tooltipSide="top" pressed={showMinimap} onClick={() => setShowMinimap((show) => !show)} />
+          {hasDiff && (
+            <IconButton icon={Diff} label={showRemoved ? "Hide removed lines" : "Show removed lines"} tooltipSide="top" pressed={showRemoved} onClick={() => dispatch({ type: "setShowRemoved", value: !showRemoved })} />
+          )}
         </Panel>
       </ReactFlow>
       <div className="visually-hidden" aria-live="polite">
@@ -316,29 +380,21 @@ function blockLabel(block: StoryBlock, total: number, status: ChangeStatus | nul
   return parts.join(", ");
 }
 
-const splitCache = new WeakMap<Analysis, Map<string, string[]>>();
-
-/** Source lines of a file, split once per analysis. */
-function fileLines(analysis: Analysis, path: string): string[] {
-  let byPath = splitCache.get(analysis);
-  if (byPath === undefined) {
-    byPath = new Map();
-    splitCache.set(analysis, byPath);
-  }
-  const cached = byPath.get(path);
-  if (cached !== undefined) return cached;
-  const lines = mustGet(analysis.contents, path, "File content").split("\n");
-  byPath.set(path, lines);
-  return lines;
+/** A card's rows: its lines from the version it lives in, with removed lines inline when the reader wants them. */
+function blockRows(analysis: Analysis, block: StoryBlock, showRemoved: boolean): CardRow[] {
+  const { symbol } = block;
+  const lines = fileLines(analysis, symbol.filePath, symbol.origin).slice(block.displayStart - 1, block.displayEnd);
+  const removedAbove = showRemoved && symbol.origin === "current" ? removedLinesAbove(analysis, symbol.filePath) : () => [];
+  return cardRows(block.displayStart, lines, removedAbove);
 }
 
-function blockSource(analysis: Analysis, block: StoryBlock, card: CardGeometry) {
-  const lines = fileLines(analysis, block.symbol.filePath).slice(block.displayStart - 1, block.displayStart - 1 + card.shownLines);
+/** Added-line washes and, when removed lines are hidden, the markers where lines were removed. Removed blocks have neither. */
+function diffMarks(analysis: Analysis, block: StoryBlock, showRemoved: boolean) {
   const diff = analysis.diffByPath.get(block.symbol.filePath);
+  if (diff === undefined || block.symbol.origin === "removed") return { addedLines: EMPTY_LINES, removalAnchors: EMPTY_LINES };
   return {
-    lines,
-    addedLines: diff === undefined ? EMPTY_LINES : new Set(diff.addedLines),
-    removalAnchors: diff === undefined ? EMPTY_LINES : new Set(diff.removalAnchors),
+    addedLines: new Set(diff.addedLines),
+    removalAnchors: showRemoved ? EMPTY_LINES : new Set(diff.removalAnchors),
   };
 }
 

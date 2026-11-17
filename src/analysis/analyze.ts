@@ -1,7 +1,7 @@
 import type { CodeGraph, FileDiff, ParsedFile, Project, SourceFile } from "../model/types";
 import { buildGraph } from "../graph/buildGraph";
 import { buildChangeIndex, type ChangeIndex } from "../graph/changes";
-import { contentOfAddedFile } from "../diff/unifiedDiff";
+import { contentOfAddedFile, contentOfDeletedFile, reconstructBase } from "../diff/unifiedDiff";
 import { symbolId } from "../model/ids";
 import { LANGUAGES, languageOf, type Language } from "../parse/language";
 import { parsePythonFile } from "../parse/pythonParser";
@@ -16,6 +16,7 @@ export interface Analysis {
   project: Project;
   graph: CodeGraph;
   contents: Map<string, string>; // file path -> source (absent for deleted files)
+  baseContents: Map<string, string>; // changed file path -> its old version, for removed blocks and before/after views
   changes: ChangeIndex;
   diffByPath: Map<string, FileDiff>;
   skippedDiffPaths: string[]; // changed files VisualCode does not show (data, docs, binaries)
@@ -63,23 +64,60 @@ export function analyzeWith(parsers: Parsers, project: Project): Analysis {
     }
   }
 
+  const baseContents = rebuildBaseContents(reviewableDiffs, contents);
   const parsedFiles: ParsedFile[] = [...contents].map(([path, content]) => parseFile(parsers, { path, content }));
   for (const diff of reviewableDiffs) {
     if (!contents.has(diff.path)) {
       parsedFiles.push(emptyParsedFile(diff.path)); // deleted, or changed but not loaded
     }
   }
-  parsedFiles.sort((a, b) => a.path.localeCompare(b.path));
+  const withRemoved = parsedFiles.map((parsed) => {
+    const base = baseContents.get(parsed.path);
+    return base === undefined ? parsed : withRemovedBlocks(parsed, parseFile(parsers, { path: parsed.path, content: base }));
+  });
+  withRemoved.sort((a, b) => a.path.localeCompare(b.path));
 
-  const graph = buildGraph(project.title, parsedFiles);
+  const graph = buildGraph(project.title, withRemoved);
   return {
     project,
     graph,
     contents,
+    baseContents,
     changes: buildChangeIndex(graph, reviewableDiffs),
     diffByPath: new Map(reviewableDiffs.map((diff) => [diff.path, diff])),
     skippedDiffPaths,
   };
+}
+
+/**
+ * The old version of every changed file: deleted files from their patch, modified and renamed files by
+ * applying the patch in reverse. Files whose patch does not match the loaded code are left out.
+ */
+function rebuildBaseContents(diffs: FileDiff[], contents: Map<string, string>): Map<string, string> {
+  const base = new Map<string, string>();
+  for (const diff of diffs) {
+    if (diff.status === "deleted") {
+      base.set(diff.path, contentOfDeletedFile(diff));
+      continue;
+    }
+    const current = contents.get(diff.path);
+    if (diff.status === "added" || diff.patch === "" || current === undefined) continue;
+    const rebuilt = reconstructBase(current, diff.patch);
+    if (rebuilt !== null) base.set(diff.path, rebuilt);
+  }
+  return base;
+}
+
+/**
+ * Adds the blocks that existed in the old version but not in the new one, so deleted functions stay
+ * visible in a review. Their line numbers refer to the old version (see Analysis.baseContents).
+ */
+function withRemovedBlocks(parsed: ParsedFile, base: ParsedFile): ParsedFile {
+  const current = new Set(parsed.symbols.map((symbol) => symbol.id));
+  const removed = base.symbols
+    .filter((symbol) => symbol.kind !== "section" && !current.has(symbol.id))
+    .map((symbol) => ({ ...symbol, origin: "removed" as const }));
+  return removed.length === 0 ? parsed : { ...parsed, symbols: [...parsed.symbols, ...removed] };
 }
 
 function requireLanguage(path: string): Language {
@@ -125,6 +163,7 @@ function wholeFileBlock(file: SourceFile): ParsedFile {
         parentSymbolId: null,
         startLine: 1,
         endLine: Math.max(1, lineCount),
+        origin: "current",
       },
     ],
     imports: [],
