@@ -75,7 +75,7 @@ export function loadFromPaste(fileName: string, code: string, diffText: string):
   if (!hasCode && !hasDiff) throw new Error("Paste some code, a diff, or both.");
   const path = normalizePath(fileName.trim());
   if (hasCode && languageOf(path) === null) {
-    throw new Error("The file name must end in .ts, .tsx, .js, .jsx or .py so the code can be read.");
+    throw new Error("Give the file a code extension (for example .ts, .py, .java, .go or .rs) so its language is known.");
   }
   const diff: FileDiff[] = hasDiff ? parseUnifiedDiff(diffText) : [];
   return {
@@ -87,7 +87,7 @@ export function loadFromPaste(fileName: string, code: string, diffText: string):
 }
 
 function makeLocalProject(id: string, title: string, sources: SourceFile[]): Project {
-  if (sources.length === 0) throw new Error("No JavaScript, TypeScript or Python files found.");
+  if (sources.length === 0) throw new Error("No source code files found in this folder.");
   if (sources.length > MAX_FILES) {
     throw new Error(`Found ${sources.length} source files (limit ${MAX_FILES}). Pick a smaller folder.`);
   }

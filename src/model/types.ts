@@ -1,6 +1,8 @@
 // Core data model shared by ingestion, parsing, graph building and the UI.
 
-export type Language = "ts" | "py";
+import type { Language } from "../parse/language";
+
+export type { Language };
 
 export interface SourceFile {
   path: string; // POSIX path relative to the project root, no leading slash
@@ -40,12 +42,19 @@ export interface CallRef {
   line: number; // 1-based line of the call site
 }
 
+export interface LineRange {
+  startLine: number;
+  endLine: number;
+}
+
 export interface ParsedFile {
   path: string;
   language: Language;
   symbols: CodeSymbol[];
   imports: ImportRef[];
   calls: CallRef[];
+  /** Lines owned by declarations that are not blocks themselves (e.g. a Rust `impl` around its methods). */
+  containerRanges: LineRange[];
 }
 
 // ---------- Diff ----------

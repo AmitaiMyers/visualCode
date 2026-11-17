@@ -30,6 +30,15 @@ export default defineConfig({
       workbox: {
         globPatterns: ["**/*.{js,css,html,svg,png,woff2}"],
         maximumFileSizeToCacheInBytes: PRECACHE_LIMIT_BYTES,
+        // Tree-sitter grammars (~0.2–4.7 MB each, ~21 MB in all) are not precached: each is cached the
+        // first time a project in that language is opened, then works offline.
+        runtimeCaching: [
+          {
+            urlPattern: ({ url }) => url.pathname.endsWith(".wasm"),
+            handler: "CacheFirst",
+            options: { cacheName: "tree-sitter-grammars", expiration: { maxEntries: 20 } },
+          },
+        ],
       },
     }),
   ],

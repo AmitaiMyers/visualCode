@@ -15,6 +15,7 @@ export function parseTypeScriptFile(ts: TypeScriptModule, file: SourceFile): Par
     symbols: collector.symbols,
     imports: collector.imports,
     calls: collector.calls,
+    containerRanges: [],
   };
 }
 

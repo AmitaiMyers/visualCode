@@ -133,7 +133,7 @@ export function LoadDialog({ initialTab, githubToken, onOpen, onClose }: LoadDia
             open(async () => loadFromPaste(fileName, code, diffText));
           }}
         >
-          <TextField label="File name" hint="The extension sets the language: .ts, .tsx, .js, .py…" value={fileName} onChange={(event) => setFileName(event.target.value)} />
+          <TextField label="File name" hint="The extension sets the language: .ts, .py, .java, .go, .rs, .cs…" value={fileName} onChange={(event) => setFileName(event.target.value)} />
           <TextAreaField label="Code" rows={9} value={code} placeholder="Paste a file here" onChange={(event) => setCode(event.target.value)} />
           <TextAreaField
             label="Diff (optional)"

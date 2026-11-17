@@ -2,6 +2,7 @@ import { useRef, useState } from "react";
 import { ClipboardPaste, FolderOpen, Link2, Play } from "lucide-react";
 import { loadFromGitHub } from "../ingest/github";
 import { entriesFromFileList, loadFromEntries } from "../ingest/localFiles";
+import { PARSED_LANGUAGE_LIST } from "../parse/language";
 import { errorMessage } from "../util/assert";
 import { Button } from "../ui/Button";
 import { TextField } from "../ui/Field";
@@ -100,7 +101,9 @@ export function Welcome({ loading, githubToken, onOpen, onDemo, onMoreOptions }:
               event.target.value = "";
             }}
           />
-          <p className={styles.footnote}>JavaScript, TypeScript and Python. Runs in your browser and works offline once installed.</p>
+          <p className={styles.footnote}>
+            Reads {PARSED_LANGUAGE_LIST}. Other code files show as whole-file blocks. Runs in your browser and works offline once installed.
+          </p>
         </div>
         <StoryIllustration />
       </section>

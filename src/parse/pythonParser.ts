@@ -17,6 +17,7 @@ export function parsePythonFile(file: SourceFile): ParsedFile {
     symbols: parser.symbols,
     imports: parser.imports,
     calls: parser.calls,
+    containerRanges: [],
   };
 }
 

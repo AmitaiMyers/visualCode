@@ -6,6 +6,7 @@
   background: var(--code-paper);
   font: 400 12px/19px var(--font-mono);
   font-variant-ligatures: none;
+  tab-size: 4; /* Go and Makefiles indent with tabs */
   overflow-x: auto;
 }
 

@@ -168,6 +168,7 @@
   padding: 6px 0;
   font: 400 12.5px/20px var(--font-mono);
   font-variant-ligatures: none;
+  tab-size: 4; /* Go and Makefiles indent with tabs */
   color: var(--text);
 }
 

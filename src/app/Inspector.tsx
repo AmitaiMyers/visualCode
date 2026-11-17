@@ -10,6 +10,7 @@ import { KindGlyph, StatusBadge, kindWord } from "../ui/Badges";
 import { Button, IconButton } from "../ui/Button";
 import { SegmentedControl } from "../ui/SegmentedControl";
 import { useToast } from "../ui/Toasts";
+import { LANGUAGES } from "../parse/language";
 import { CodeView, DiffView } from "./CodeView";
 import { NOTE_COMPOSER_ID } from "./useWorkspaceShortcuts";
 import styles from "./Inspector.module.css";
@@ -286,9 +287,12 @@ export function titleOf(node: CodeNode): string {
 }
 
 function locationOf(node: CodeNode): string {
-  if (node.symbol === null) return node.kind === "folder" ? `Folder · ${node.path === "" ? "project root" : node.path}` : `File · ${node.path}`;
+  const language = node.language === null ? null : LANGUAGES[node.language].label;
+  if (node.symbol === null) {
+    return node.kind === "folder" ? `Folder · ${node.path === "" ? "project root" : node.path}` : `${language ?? "File"} · ${node.path}`;
+  }
   const { symbol } = node;
-  return `${kindWord(symbol.kind)} · ${symbol.filePath} · lines ${symbol.startLine}–${symbol.endLine}`;
+  return `${kindWord(symbol.kind)} · ${language ?? ""} · ${symbol.filePath} · lines ${symbol.startLine}–${symbol.endLine}`;
 }
 
 function relativeTime(iso: string): string {

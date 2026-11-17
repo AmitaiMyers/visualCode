@@ -147,7 +147,7 @@ async function loadTree(
       (entry.size ?? 0) <= MAX_FILE_BYTES,
   );
   if (entries.length === 0) {
-    throw new Error("No JavaScript, TypeScript or Python files found at this location.");
+    throw new Error("No source code files found at this location.");
   }
   if (entries.length > MAX_FILES) {
     throw new Error(`Found ${entries.length} source files (limit ${MAX_FILES}). Load a sub-folder URL instead.`);

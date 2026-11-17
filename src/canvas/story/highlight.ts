@@ -1,4 +1,4 @@
-import type { Language } from "../../model/types";
+import { LANGUAGES, type Language } from "../../parse/language";
 
 export type TokenKind = "keyword" | "string" | "comment" | "plain";
 
@@ -7,35 +7,27 @@ export interface Token {
   kind: TokenKind;
 }
 
-const KEYWORDS: Record<Language, ReadonlySet<string>> = {
-  ts: new Set(
-    "abstract as async await break case catch class const continue default delete do else enum export extends false finally for from function get if implements import in instanceof interface let new null of private protected public readonly return set static super switch this throw true try type typeof undefined var void while yield".split(
-      " ",
-    ),
-  ),
-  py: new Set(
-    "and as assert async await break class continue def del elif else except False finally for from global if import in is lambda None nonlocal not or pass raise return self True try while with yield".split(" "),
-  ),
-};
-
 /**
  * Splits one line into keyword / string / comment / plain runs. Line-local on purpose: a
  * multi-line string or block comment shows as plain text on its later lines, which is acceptable
  * for a reading aid and keeps highlighting trivially cheap.
  */
 export function tokenizeLine(line: string, language: Language): Token[] {
-  const commentStart = language === "py" ? "#" : "//";
+  const { lineComment, keywords } = LANGUAGES[language];
+  const cStyle = lineComment === "//";
   const tokens: Token[] = [];
   let plain = "";
   const flushPlain = (): void => {
-    if (plain !== "") tokens.push(...splitKeywords(plain, KEYWORDS[language]));
+    if (plain !== "") tokens.push(...splitKeywords(plain, keywords));
     plain = "";
   };
 
   let i = 0;
   while (i < line.length) {
     const rest = line.slice(i);
-    if (rest.startsWith(commentStart) || (language === "ts" && (rest.startsWith("/*") || /^\s*\*/.test(line) && i === 0))) {
+    const startsComment =
+      (lineComment !== null && rest.startsWith(lineComment)) || (cStyle && (rest.startsWith("/*") || (i === 0 && /^\s*\*/.test(line))));
+    if (startsComment) {
       flushPlain();
       tokens.push({ text: rest, kind: "comment" });
       return tokens;

@@ -25,7 +25,35 @@ points and follow arrows from each call line to the code it runs.
   the Anthropic API.
 
 Inputs: a public GitHub repo, folder or pull request URL; a local folder or `.zip`; pasted code
-and/or a pasted diff. Supported languages are JavaScript, TypeScript and Python.
+and/or a pasted diff.
+
+## Languages
+
+| Language | Parser | Cross-file links |
+| --- | --- | --- |
+| JavaScript / TypeScript | TypeScript compiler API | relative imports |
+| Python | line-based parser | absolute and relative imports |
+| Java, Kotlin | Tree-sitter | package imports, same-package classes |
+| Go | Tree-sitter | package imports (folders), same-package names |
+| C# | Tree-sitter | types by name (namespaces do not map to files) |
+| Rust | Tree-sitter | `use` paths and `mod` declarations |
+| C, C++ | Tree-sitter | `#include "…"`, functions by name |
+| PHP | Tree-sitter | `use` (PSR-4-style paths), `require`/`include` |
+| Ruby | Tree-sitter | `require` / `require_relative`, constants by name |
+| Swift | Tree-sitter | types by name (module-wide) |
+
+Methods declared away from their type are attached to it: Go receivers, Rust `impl` blocks, Swift
+`extension`s, C++ `Type::method` definitions, reopened Ruby and partial C# classes. In languages with
+an implicit `this`, a bare call inside a class finds the class's own method first. Where a language
+has no file-level import (packages, namespaces, C linkage), a call that is still unresolved links to a
+definition with that name if exactly one exists in the same folder, then in the project; ambiguous
+names stay unlinked rather than guessed.
+
+Any other code or config file (shell, SQL, YAML, HTML, CSS, Scala, Dart, Lua, …) is shown as one
+whole-file block, so its changes are never hidden in a review.
+
+Tree-sitter grammars are loaded only for the languages a project contains and are cached for offline
+use the first time they are needed.
 
 ## Run
 
@@ -50,9 +78,9 @@ ingest (GitHub / folder / zip / paste)
 
 | Path | Responsibility |
 | --- | --- |
-| `src/parse/` | Language detection, TS and Python parsers, module-level sections |
+| `src/parse/` | Language registry, TS and Python parsers, Tree-sitter engine and per-language specs, module-level sections |
 | `src/diff/` | Unified diff parsing (git and plain) |
-| `src/graph/` | Graph building, import/call resolution, change index, map view, storyline order, review order |
+| `src/graph/` | Graph building, per-language import resolution, call resolution, change index, map view, storyline order, review order |
 | `src/analysis/` | Pipeline that turns a `Project` into an `Analysis` |
 | `src/ingest/` | GitHub, folder/zip/drop and paste loaders |
 | `src/review/` | Notes and viewed-state storage, Markdown/JSON export and import |
@@ -83,9 +111,10 @@ The UI follows the **VisualCode Design System** ("margin ink"): one ink colour f
 
 ## Known limitations (POC)
 
-- Call resolution is name-based. It handles local functions, imports (named, default, namespace,
-  Python modules), `this.`/`self.` methods and `Class.method`. Dynamic dispatch, path aliases
-  (`@/…`) and package code are not resolved.
+- Call resolution is name-based, not type-based. It handles local functions, imports, `this`/`self`
+  methods and `Type.method`, but not calls through variables of a type (`cart.add()` in Java),
+  dynamic dispatch, path aliases (`@/…`) or library code.
+- Nested types and functions are part of their enclosing block rather than blocks of their own.
 - The Python parser is line-based: nested functions are part of their parent block, and only
   methods directly inside top-level classes become their own blocks.
 - A pasted diff must match the loaded code's **new** version (load the PR head, not the base).
