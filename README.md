@@ -112,6 +112,25 @@ ingest (GitHub / folder / zip / paste)
 | `src/styles/` | `tokens.css` (generated from the design system) and global base styles |
 | `src/demo/` | The built-in demo project |
 
+## Security and privacy
+
+VisualCode has no server: GitHub Pages serves the app's files and everything runs in your browser.
+
+- **Loaded code stays in the page.** A folder, zip or paste is read in memory and never uploaded or
+  stored. GitHub code is fetched by your browser from `api.github.com` and `raw.githubusercontent.com`.
+  Code is parsed and shown as text, never run.
+- **Only three outside hosts.** The built app carries a Content-Security-Policy that lets the page
+  connect only to itself, GitHub and `api.anthropic.com`, so even a compromised dependency could not
+  send code elsewhere.
+- **Claude asks first.** Before Explain, Suggest review notes or a draft, a dialog lists exactly which
+  files and lines will be sent. "Don't ask again" is remembered per project until you clear its data.
+- **Keys stay in the tab by default.** The Claude key and GitHub token are kept until the tab closes;
+  choose "On this device" in Settings to keep them longer. Either way they are unencrypted, and every
+  page on the same address can read them. On `*.github.io` that includes the owner's other Pages sites,
+  so use a read-only GitHub token and a Claude key with a spending limit.
+- **Clear your data.** Settings → Data in this browser deletes one project's notes, viewed marks,
+  system edits and AI permission, or everything including keys.
+
 ## Design system
 
 The UI follows the **VisualCode Design System** ("margin ink"): one ink colour for the reading path, change colours only for changes, code as the hero. Tokens live in `src/styles/tokens.css`; components use CSS modules that read only those tokens. Light and dark themes are both first-class, and every text pair meets WCAG AA in both.

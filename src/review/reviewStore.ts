@@ -1,32 +1,29 @@
 import { get, set } from "idb-keyval";
 import type { CodeGraph, ReviewComment } from "../model/types";
 import { assert } from "../util/assert";
+import { PROJECT_KEYS } from "../privacy/localData";
 
 const EXPORT_FORMAT = "visualcode-review";
 const EXPORT_VERSION = 1;
 
-function storageKey(projectId: string): string {
-  return `review:${projectId}`;
-}
-
 /** Comments are kept per project in IndexedDB, so reloading the same code restores the review. */
 export async function loadComments(projectId: string): Promise<ReviewComment[]> {
-  const stored = await get<ReviewComment[]>(storageKey(projectId));
+  const stored = await get<ReviewComment[]>(PROJECT_KEYS.comments(projectId));
   return stored === undefined ? [] : stored;
 }
 
 export async function saveComments(projectId: string, comments: ReviewComment[]): Promise<void> {
-  await set(storageKey(projectId), comments);
+  await set(PROJECT_KEYS.comments(projectId), comments);
 }
 
 /** Ids of blocks the reviewer marked as viewed, kept per project next to the comments. */
 export async function loadViewed(projectId: string): Promise<string[]> {
-  const stored = await get<string[]>(`viewed:${projectId}`);
+  const stored = await get<string[]>(PROJECT_KEYS.viewed(projectId));
   return stored === undefined ? [] : stored;
 }
 
 export async function saveViewed(projectId: string, viewed: Iterable<string>): Promise<void> {
-  await set(`viewed:${projectId}`, [...viewed]);
+  await set(PROJECT_KEYS.viewed(projectId), [...viewed]);
 }
 
 export function newComment(nodeId: string, body: string, source: ReviewComment["source"]): ReviewComment {

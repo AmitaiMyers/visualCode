@@ -1,6 +1,7 @@
 import type { Analysis } from "../analysis/analyze";
 import type { CodeGraph } from "../model/types";
 import { blockAtLine, declaredBlocks } from "../graph/blocks";
+import type { AiRequest } from "../ai/claude";
 import { languageOf } from "../parse/language";
 import { basename, dirname } from "../util/paths";
 import { mustGet } from "../util/assert";
@@ -196,8 +197,8 @@ function unique(points: TouchPoint[]): TouchPoint[] {
   return [...byNode.values()].slice(0, MAX_TOUCH_POINTS);
 }
 
-/** A prompt for an optional Claude draft: the plan plus the source of every touch point. */
-export function draftPrompt(analysis: Analysis, plan: IntegrationPlan): string {
+/** The request for an optional Claude draft: the plan plus the source of every touch point. */
+export function draftRequest(analysis: Analysis, plan: IntegrationPlan): AiRequest {
   const touch = plan.steps.flatMap((step) => step.touchPoints);
   const sources = touch.map((point) => {
     const symbol = mustGet(analysis.graph.nodes, point.nodeId, "Touch point").symbol;
@@ -206,14 +207,16 @@ export function draftPrompt(analysis: Analysis, plan: IntegrationPlan): string {
     return `<block name="${point.label}" path="${symbol.filePath}" lines="${symbol.startLine}-${symbol.endLine}" why="${point.reason}">\n${lines.join("\n")}\n</block>`;
   });
   const steps = plan.steps.map((step, index) => `${index + 1}. ${step.title}: ${step.detail}${step.snippets.map((snippet) => `\n--- ${snippet.file}\n${snippet.text}`).join("")}`);
-  return [
+  const prompt = [
     `Add ${plan.technology.label} to the app "${plan.app.name}" (${plan.language}). Follow this plan:`,
     steps.join("\n\n"),
     touch.length === 0 ? "No existing blocks were found to change; propose where the new code goes." : `Change these blocks:\n\n${sources.join("\n\n")}`,
     "Reply with the changed blocks in full, each as a fenced code block preceded by its file path and block name, then a short list of what to test.",
   ].join("\n\n");
+  const includes = ["the integration plan (generated, no project code)", ...touch.map((point) => `${point.path}: ${point.label}`)];
+  return { system: DRAFT_SYSTEM_PROMPT, prompt, includes };
 }
 
-export const DRAFT_SYSTEM_PROMPT =
+const DRAFT_SYSTEM_PROMPT =
   "You are a senior engineer adding infrastructure to an existing codebase. Change as little as possible, keep the project's style, " +
   "read configuration from the environment, and fail with a clear error when a setting is missing.";

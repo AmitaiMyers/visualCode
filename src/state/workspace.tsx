@@ -25,6 +25,8 @@ export interface WorkspaceState {
   showRemoved: boolean;
   /** What the canvas shows: the scope's map or storyline, every changed block as one story, or the system design. */
   canvasView: CanvasView;
+  /** Bumped when the reader clears saved data, so views that loaded it from the browser load again. */
+  storageGeneration: number;
   changeOrder: ChangeOrder;
   rail: RailTab;
   inspectorOpen: boolean;
@@ -53,7 +55,8 @@ export type WorkspaceAction =
   | { type: "toggleResolved"; commentId: string }
   | { type: "removeComment"; commentId: string }
   | { type: "mergeComments"; comments: ReviewComment[] }
-  | { type: "setViewed"; nodeId: string; viewed: boolean };
+  | { type: "setViewed"; nodeId: string; viewed: boolean }
+  | { type: "localDataCleared" };
 
 const INITIAL_STATE: WorkspaceState = {
   analysis: null,
@@ -66,6 +69,7 @@ const INITIAL_STATE: WorkspaceState = {
   changedOnly: false,
   showRemoved: true,
   canvasView: "scope",
+  storageGeneration: 0,
   changeOrder: "flow",
   rail: "outline",
   inspectorOpen: true,
@@ -136,6 +140,9 @@ export function workspaceReducer(state: WorkspaceState, action: WorkspaceAction)
       const comments = [...byId.values()].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
       return reviewChange(state, { comments });
     }
+    case "localDataCleared":
+      // The browser copy is gone; forget the in-memory one too (reviewDirty false: nothing to save).
+      return { ...state, comments: [], viewed: new Set(), reviewDirty: false, storageGeneration: state.storageGeneration + 1 };
     case "setViewed": {
       const viewed = new Set(state.viewed);
       if (action.viewed) viewed.add(action.nodeId);

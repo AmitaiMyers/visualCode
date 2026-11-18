@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { ArrowRight, Copy, KeyRound, Sparkles, Trash2, X } from "lucide-react";
-import { completeWithClaude } from "../../ai/claude";
+import { sendToClaude } from "../../ai/claude";
+import { useAiConsent } from "../../privacy/AiConsent";
 import { fileId } from "../../model/ids";
 import { useAnalysis, useNavigation } from "../../state/workspace";
 import { errorMessage } from "../../util/assert";
@@ -8,7 +9,7 @@ import { Button, IconButton } from "../../ui/Button";
 import { useToast } from "../../ui/Toasts";
 import { PLAN_LANGUAGE_LABEL, technologyById, isTechnologyId, type PlanLanguage } from "../../system/catalog";
 import { KIND_LABEL, type Evidence, type SystemComponent, type SystemConnection, type SystemDesign } from "../../system/model";
-import { DRAFT_SYSTEM_PROMPT, appLanguages, buildIntegrationPlan, draftPrompt, type IntegrationPlan, type TouchPoint } from "../../system/plan";
+import { appLanguages, buildIntegrationPlan, draftRequest, type IntegrationPlan, type TouchPoint } from "../../system/plan";
 import { blockAtLine } from "../../graph/blocks";
 import { technologyName } from "./SystemNode";
 import styles from "./SystemCanvas.module.css";
@@ -116,6 +117,7 @@ function IntegrationGuide({ design, component, aiKey, onAddApiKey }: { design: S
   const planLanguage = language ?? detected[0] ?? "ts";
   const plan = useMemo(() => (app === null || component.technology === null ? null : buildIntegrationPlan(analysis, design, component.technology, app, planLanguage)), [analysis, design, component, app, planLanguage]);
   const [draft, setDraft] = useState<DraftState>({ status: "idle" });
+  const { confirmSend, consentDialog } = useAiConsent();
 
   if (apps.length === 0 || app === null || plan === null) {
     return <p className="caption">Add a service built from this project's code to get an integration guide.</p>;
@@ -127,15 +129,18 @@ function IntegrationGuide({ design, component, aiKey, onAddApiKey }: { design: S
       () => toast({ message: "Copying was blocked by the browser.", tone: "error" }),
     );
   };
-  const askForDraft = (): void => {
+  const askForDraft = async (): Promise<void> => {
+    const request = draftRequest(analysis, plan);
+    if (!(await confirmSend(request))) return;
     setDraft({ status: "loading" });
-    completeWithClaude(aiKey, DRAFT_SYSTEM_PROMPT, draftPrompt(analysis, plan))
+    sendToClaude(aiKey, request)
       .then((text) => setDraft({ status: "done", text }))
       .catch((reason: unknown) => setDraft({ status: "error", message: errorMessage(reason) }));
   };
 
   return (
     <section className={styles.panelSection} aria-label="Integration guide">
+      {consentDialog}
       <span className="label">Add {plan.technology.label} to the code</span>
       <div className={styles.planPickers}>
         <label className={styles.picker}>
@@ -179,7 +184,7 @@ function IntegrationGuide({ design, component, aiKey, onAddApiKey }: { design: S
           </li>
         ))}
       </ol>
-      <ClaudeDraft draft={draft} aiKey={aiKey} onAsk={askForDraft} onAddApiKey={onAddApiKey} onCopy={(text) => copy(text, "Draft")} plan={plan} />
+      <ClaudeDraft draft={draft} aiKey={aiKey} onAsk={() => void askForDraft()} onAddApiKey={onAddApiKey} onCopy={(text) => copy(text, "Draft")} plan={plan} />
     </section>
   );
 }

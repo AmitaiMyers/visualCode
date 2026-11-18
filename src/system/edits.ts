@@ -1,4 +1,5 @@
 import { get, set } from "idb-keyval";
+import { PROJECT_KEYS } from "../privacy/localData";
 import { connectionId, type ComponentKind, type SystemComponent, type SystemConnection, type SystemDesign } from "./model";
 
 export interface Position {
@@ -19,17 +20,13 @@ export interface SystemEdits {
 
 export const NO_EDITS: SystemEdits = { added: [], addedConnections: [], hidden: [], positions: {} };
 
-function storageKey(projectId: string): string {
-  return `system:${projectId}`;
-}
-
 export async function loadSystemEdits(projectId: string): Promise<SystemEdits> {
-  const stored = await get<SystemEdits>(storageKey(projectId));
+  const stored = await get<SystemEdits>(PROJECT_KEYS.systemEdits(projectId));
   return stored === undefined ? NO_EDITS : stored;
 }
 
 export async function saveSystemEdits(projectId: string, edits: SystemEdits): Promise<void> {
-  await set(storageKey(projectId), edits);
+  await set(PROJECT_KEYS.systemEdits(projectId), edits);
 }
 
 /** The design the reader sees: detected minus removed, plus added. Connections to removed components go too. */

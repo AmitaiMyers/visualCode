@@ -47,7 +47,7 @@ function viewLabel(Icon: LucideIcon, text: string) {
 
 export function CanvasArea({ reviewEnabled, aiKey, onReviewDiff, onAddApiKey }: CanvasAreaProps) {
   const analysis = useAnalysis();
-  const { scopeId, selectedId, changedOnly, inspectorOpen, canvasView, changeOrder } = useWorkspace();
+  const { scopeId, selectedId, changedOnly, inspectorOpen, canvasView, changeOrder, storageGeneration } = useWorkspace();
   const dispatch = useDispatch();
   const navigation = useNavigation();
   const scope = mustGet(analysis.graph.nodes, scopeId, "Scope");
@@ -193,7 +193,7 @@ export function CanvasArea({ reviewEnabled, aiKey, onReviewDiff, onAddApiKey }: 
         </div>
       </div>
       <div className={styles.canvas} id="canvas" tabIndex={-1}>
-        <ReactFlowProvider key={mode === "changes" ? `changes:${changeOrder}` : mode === "system" ? "system" : scopeId}>
+        <ReactFlowProvider key={mode === "changes" ? `changes:${changeOrder}` : mode === "system" ? `system:${storageGeneration}` : scopeId}>
           {mode === "changes" && <ChangesStoryCanvas order={changeOrder} reviewEnabled={reviewEnabled} />}
           {mode === "story" && <FileStoryCanvas filePath={scope.path} reviewEnabled={reviewEnabled} />}
           {mode === "map" && <MapCanvas scopeId={scopeId} />}

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ArrowRight, Check, FlaskConical, KeyRound, MessageSquare, Sparkles, X } from "lucide-react";
-import { askClaude, type AiTask } from "../ai/claude";
+import { aiRequestFor, sendToClaude, type AiTask } from "../ai/claude";
+import { useAiConsent } from "../privacy/AiConsent";
 import type { CodeNode, ReviewComment } from "../model/types";
 import { ancestry } from "../graph/view";
 import { TEST_SEARCH_DEPTH, impactOf } from "../graph/impact";
@@ -196,10 +197,14 @@ function NotesPanel({ node, aiKey, onAddApiKey }: { node: CodeNode; aiKey: strin
     (comment) => comment.nodeId !== node.id && analysis.graph.nodes.has(comment.nodeId) && ancestry(analysis.graph, comment.nodeId).includes(node.id),
   );
 
-  const ask = (task: AiTask): void => {
+  const { confirmSend, consentDialog } = useAiConsent();
+
+  const ask = async (task: AiTask): Promise<void> => {
+    const request = aiRequestFor(analysis, node, task);
+    if (!(await confirmSend(request))) return;
     setAiTask(task);
     setAiError(null);
-    askClaude(aiKey, analysis, node, task)
+    sendToClaude(aiKey, request)
       .then((answer) => {
         dispatch({ type: "addComment", comment: newComment(node.id, answer, "ai") });
         toast({ message: "Claude added a note", tone: "success" });
@@ -217,14 +222,15 @@ function NotesPanel({ node, aiKey, onAddApiKey }: { node: CodeNode; aiKey: strin
 
   return (
     <div className={styles.notes}>
+      {consentDialog}
       {node.kind !== "folder" && (
         <section className={styles.section} aria-label="Ask Claude">
           <span className="label">Ask Claude</span>
           <div className={styles.aiRow}>
-            <Button size="sm" icon={Sparkles} loading={aiTask === "explain"} disabledReason={noKey} onClick={() => ask("explain")}>
+            <Button size="sm" icon={Sparkles} loading={aiTask === "explain"} disabledReason={noKey} onClick={() => void ask("explain")}>
               Explain
             </Button>
-            <Button size="sm" icon={Sparkles} loading={aiTask === "review"} disabledReason={noKey} onClick={() => ask("review")}>
+            <Button size="sm" icon={Sparkles} loading={aiTask === "review"} disabledReason={noKey} onClick={() => void ask("review")}>
               Suggest review notes
             </Button>
             {noKey !== null && (

@@ -3,11 +3,13 @@ import { CircleAlert, X } from "lucide-react";
 import { parseUnifiedDiff } from "../diff/unifiedDiff";
 import { DEMO_DIFF, DEMO_FILES, DEMO_ID, DEMO_TITLE } from "../demo/sampleProject";
 import { entriesFromDrop, loadFromEntries, loadFromZip } from "../ingest/localFiles";
-import { applyTheme, loadSettings, persistSettings, type Settings } from "../settings";
+import { DEFAULT_SETTINGS, applyTheme, loadSettings, persistSettings, type Settings } from "../settings";
+import { clearAllData, clearProjectData } from "../privacy/localData";
 import { useShortcuts } from "../state/useShortcuts";
-import { useWorkspace } from "../state/workspace";
+import { useDispatch, useWorkspace } from "../state/workspace";
 import { errorMessage } from "../util/assert";
 import { IconButton } from "../ui/Button";
+import { useToast } from "../ui/Toasts";
 import { CanvasArea } from "./CanvasArea";
 import { CommandPalette } from "./CommandPalette";
 import { Inspector } from "./Inspector";
@@ -41,6 +43,8 @@ const DEMO_SOURCE: ProjectSource = async () => ({
 
 export function AppShell() {
   const { analysis } = useWorkspace();
+  const dispatch = useDispatch();
+  const toast = useToast();
   const [settings, setSettings] = useState<Settings>(loadSettings);
   const [dialog, setDialog] = useState<OpenDialog>(null);
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -142,6 +146,21 @@ export function AppShell() {
       {dialog?.name === "settings" && (
         <SettingsDialog
           settings={settings}
+          projectTitle={analysis === null ? null : analysis.project.title}
+          onClearProject={async () => {
+            if (analysis === null) throw new Error("No project is open");
+            await clearProjectData(analysis.project.id);
+            dispatch({ type: "localDataCleared" });
+            setDialog(null);
+            toast({ message: "This project's notes, viewed marks and system edits were deleted", tone: "success" });
+          }}
+          onClearAll={async () => {
+            await clearAllData();
+            setSettings(DEFAULT_SETTINGS);
+            if (analysis !== null) dispatch({ type: "localDataCleared" });
+            setDialog(null);
+            toast({ message: "All VisualCode data in this browser was deleted, keys included", tone: "success" });
+          }}
           onSave={(next) => {
             persistSettings(next);
             setSettings(next);

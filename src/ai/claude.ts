@@ -12,16 +12,28 @@ const SYSTEM_PROMPT =
   "(functions, classes and module-level sections) ordered by how the logic flows. " +
   "Be concrete and brief. Refer to blocks by name. Use short Markdown bullet lists.";
 
-/**
- * Asks Claude about one block/file, using the key the user pasted in Settings.
- * The key is sent straight from the browser to the Anthropic API.
- */
-export async function askClaude(apiKey: string, analysis: Analysis, node: CodeNode, task: AiTask): Promise<string> {
-  return completeWithClaude(apiKey, SYSTEM_PROMPT, buildPrompt(analysis, node, task));
+/** What one AI action sends, built before sending so the reader can see it first. */
+export interface AiRequest {
+  system: string;
+  prompt: string;
+  /** Plain-language list of the project content inside the prompt, e.g. "src/cart.ts, lines 3–7". */
+  includes: string[];
 }
 
-/** One request to Claude with the reader's key; returns the answer's text, or throws on a refusal or an empty answer. */
-export async function completeWithClaude(apiKey: string, system: string, prompt: string): Promise<string> {
+/** The request for Explain / Suggest review notes on one block or file. */
+export function aiRequestFor(analysis: Analysis, node: CodeNode, task: AiTask): AiRequest {
+  const diff = analysis.diffByPath.get(node.path);
+  const where = node.symbol === null ? `${node.path} (whole file)` : `${node.path}, lines ${node.symbol.startLine}–${node.symbol.endLine}${node.symbol.origin === "removed" ? " of the old version" : ""}`;
+  const includes = [where, ...(diff !== undefined && diff.patch !== "" ? [`the diff of ${node.path}`] : [])];
+  return { system: SYSTEM_PROMPT, prompt: buildPrompt(analysis, node, task), includes };
+}
+
+/**
+ * Sends one request to Claude with the key the reader pasted in Settings, straight from the browser to the
+ * Anthropic API. Returns the answer's text, or throws on a refusal or an empty answer.
+ */
+export async function sendToClaude(apiKey: string, request: AiRequest): Promise<string> {
+  const { system, prompt } = request;
   const { default: Anthropic } = await import("@anthropic-ai/sdk");
   const client = new Anthropic({ apiKey, dangerouslyAllowBrowser: true });
   const response = await client.beta.messages.create({

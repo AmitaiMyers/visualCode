@@ -6,7 +6,7 @@ import { symbolId } from "../model/ids";
 import { detectSystem } from "../system/detect";
 import { NO_EDITS, addComponent, addConnection, applyEdits, removeItem } from "../system/edits";
 import { toMermaid, toStructurizr } from "../system/export";
-import { appLanguages, buildIntegrationPlan, draftPrompt } from "../system/plan";
+import { appLanguages, buildIntegrationPlan, draftRequest } from "../system/plan";
 import type { SystemDesign } from "../system/model";
 import { analyze } from "./fixtures";
 
@@ -38,7 +38,9 @@ describe("the demo's system", () => {
     expect(plan.steps[2]!.snippets[0]).toMatchObject({ file: ".env.example", text: "REDIS_URL=redis://localhost:6379" });
     expect(plan.steps[3]!.snippets[0]!.file).toBe("src/db/redis.ts");
     expect(plan.steps[4]!.touchPoints.map((point) => point.label)).toEqual(["saveOrder", "findOrder"]);
-    expect(draftPrompt(analysis, plan)).toContain('<block name="findOrder" path="src/db/orders.ts"');
+    const draft = draftRequest(analysis, plan);
+    expect(draft.prompt).toContain('<block name="findOrder" path="src/db/orders.ts"');
+    expect(draft.includes).toEqual(["the integration plan (generated, no project code)", "src/db/orders.ts: saveOrder", "src/db/orders.ts: findOrder"]);
   });
 
   it("puts write routes first for a message broker", () => {

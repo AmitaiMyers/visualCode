@@ -1,6 +1,7 @@
 import { useState } from "react";
-import { KeyRound, Monitor, Moon, Sun } from "lucide-react";
-import type { Settings, ThemePreference } from "../../settings";
+import { errorMessage } from "../../util/assert";
+import { KeyRound, Monitor, Moon, Sun, Trash2 } from "lucide-react";
+import type { KeyStorage, Settings, ThemePreference } from "../../settings";
 import { Button } from "../../ui/Button";
 import { Dialog } from "../../ui/Dialog";
 import { TextField } from "../../ui/Field";
@@ -9,11 +10,14 @@ import styles from "./dialogs.module.css";
 
 interface SettingsDialogProps {
   settings: Settings;
+  projectTitle: string | null; // the open project, whose data "Clear this project's data" deletes
   onSave: (settings: Settings) => void;
+  onClearProject: () => Promise<void>;
+  onClearAll: () => Promise<void>;
   onClose: () => void;
 }
 
-export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProps) {
+export function SettingsDialog({ settings, projectTitle, onSave, onClearProject, onClearAll, onClose }: SettingsDialogProps) {
   const [draft, setDraft] = useState<Settings>(settings);
   const update = (patch: Partial<Settings>): void => setDraft((current) => ({ ...current, ...patch }));
 
@@ -73,13 +77,32 @@ export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProp
             value={draft.githubToken}
             onChange={(event) => update({ githubToken: event.target.value.trim() })}
           />
-          <label className={styles.switch}>
-            <input type="checkbox" checked={draft.rememberKeys} onChange={(event) => update({ rememberKeys: event.target.checked })} />
-            <span className={styles.switchText}>
-              <span className={styles.switchTitle}>Remember keys on this device</span>
-              <span className="caption">Stored unencrypted in this browser. Use keys with spending limits.</span>
-            </span>
-          </label>
+          <span className={styles.switchTitle}>Keep keys</span>
+          <SegmentedControl<KeyStorage>
+            label="Keep keys"
+            value={draft.keyStorage}
+            onChange={(keyStorage) => update({ keyStorage })}
+            segments={[
+              { value: "tab", label: "Until this tab closes" },
+              { value: "device", label: "On this device" },
+            ]}
+          />
+          <p className="caption">
+            Keys are stored unencrypted, and other pages on this site's address can read them. Keep them in this tab unless you trust
+            this device, and use a read-only GitHub token and a Claude key with a spending limit.
+          </p>
+        </section>
+
+        <section className={styles.group} aria-label="Data in this browser">
+          <span className="label">Data in this browser</span>
+          <p className="caption">
+            Loaded code is never stored or uploaded. Notes, viewed marks, system design edits and AI permissions are kept in this
+            browser until you clear them.
+          </p>
+          <div className={styles.row}>
+            {projectTitle !== null && <ClearButton label="Clear this project's data" onConfirm={onClearProject} />}
+            <ClearButton label="Clear everything" onConfirm={onClearAll} />
+          </div>
         </section>
 
         <div className={styles.row}>
@@ -92,5 +115,37 @@ export function SettingsDialog({ settings, onSave, onClose }: SettingsDialogProp
         </div>
       </form>
     </Dialog>
+  );
+}
+
+/** A destructive button that asks for a second click before it acts. On success the dialog closes. */
+function ClearButton({ label, onConfirm }: { label: string; onConfirm: () => Promise<void> }) {
+  const [state, setState] = useState<{ step: "idle" | "armed" | "working" } | { step: "failed"; message: string }>({ step: "idle" });
+  const text = { idle: label, armed: "Click again to delete", working: "Deleting…", failed: label }[state.step];
+  return (
+    <span>
+      <Button
+        variant={state.step === "armed" ? "danger" : "secondary"}
+        size="sm"
+        icon={Trash2}
+        loading={state.step === "working"}
+        onClick={() => {
+          if (state.step !== "armed") {
+            setState({ step: "armed" });
+            return;
+          }
+          setState({ step: "working" });
+          onConfirm().catch((reason: unknown) => setState({ step: "failed", message: errorMessage(reason) }));
+        }}
+        onBlur={() => setState((current) => (current.step === "armed" ? { step: "idle" } : current))}
+      >
+        {text}
+      </Button>
+      {state.step === "failed" && (
+        <span className="caption" role="alert">
+          {state.message}
+        </span>
+      )}
+    </span>
   );
 }
